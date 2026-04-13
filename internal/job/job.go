@@ -11,7 +11,7 @@ const (
 	StatusPending Status = "PENDING"
 	StatusRunning Status = "RUNNING"
 	StatusDone    Status = "DONE"
-	StatusFailed  Status = "Failed"
+	StatusFailed  Status = "FAILED"
 	StatusDead    Status = "DEAD"
 )
 
