@@ -15,7 +15,7 @@ type Pool struct {
 	queue    queue.Queue
 	store    job.Store
 	registry *handler.Registry
-	retry    *retry.Engine // Not defined yet
+	retry    *retry.RetryEngine // Not defined yet
 	// dlq
 	// metrics
 	numWorkers int
