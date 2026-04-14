@@ -7,7 +7,7 @@ import (
 )
 
 type Queue interface {
-	Enequeue(ctx context.Context, job *job.Job) error
+	Enqueue(ctx context.Context, job *job.Job) error
 	Dequeue(ctx context.Context) (job *job.Job, error error)
 	Len() int
 	Name() string
