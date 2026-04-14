@@ -19,9 +19,28 @@ type inMemoryStore struct {
 	jobs map[string]*Job
 }
 
+func validateContext(ctx context.Context) error{
+	if ctx == nil{
+		return errors.New("Context is null")
+	}
+
+	select{
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	return nil
+}
+
 func (store *inMemoryStore) Save(ctx context.Context, job *Job) error {
 	store.mu.Lock()
 	defer store.mu.Unlock()
+
+	err:=validateContext(ctx)
+	if err != nil {
+		return err
+	}
 
 	store.jobs[job.ID] = job
 
@@ -32,6 +51,11 @@ func (store *inMemoryStore) Get(ctx context.Context, id string) (*Job, error) {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
 
+	err:=validateContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	job, exists := store.jobs[id]
 	if !exists {
 		return nil, errors.New("job not found")
@@ -40,7 +64,7 @@ func (store *inMemoryStore) Get(ctx context.Context, id string) (*Job, error) {
 	return job, nil
 }
 
-func isValidTransaction(from, to Status) bool {
+func isValidTransition(from, to Status) bool {
 	switch from {
 	case StatusPending:
 		return to == StatusRunning
@@ -57,13 +81,18 @@ func (store *inMemoryStore) UpdateStatus(ctx context.Context, id string, status 
 	store.mu.Lock()
 	defer store.mu.Unlock()
 
-	job, err := store.Get(ctx, id)
+	err:=validateContext(ctx)
 	if err != nil {
+		return err
+	}
+
+	job, exists := store.jobs[id]
+	if !exists {
 		return fmt.Errorf("job with id = %s does not exist", id)
 	}
 
-	if !isValidTransaction(job.Status, status) {
-		return fmt.Errorf("invalid transaction: %s -> %s", string(job.Status), string(status))
+	if !isValidTransition(job.Status, status) {
+		return fmt.Errorf("invalid transition: %s -> %s", string(job.Status), string(status))
 	}
 
 	job.Status = status
@@ -74,6 +103,11 @@ func (store *inMemoryStore) UpdateStatus(ctx context.Context, id string, status 
 func(store *inMemoryStore) Delete(ctx context.Context, id string) error{
 	store.mu.Lock()
 	defer store.mu.Unlock()
+
+	err:=validateContext(ctx)
+	if err != nil {
+		return err
+	}
 
 	delete(store.jobs, id)
 
