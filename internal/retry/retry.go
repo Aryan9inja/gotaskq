@@ -11,10 +11,13 @@ import (
 )
 
 type RetryEngine struct {
-	store job.Store
-	queue queue.Queue
-	// BaseDelay time.Duration
+	store    job.Store
+	queue    queue.Queue
 	MaxDelay time.Duration
+}
+
+type Engine interface{
+	HandleFailure(ctx context.Context, j *job.Job)
 }
 
 func ShouldRetry(j *job.Job) bool {
@@ -35,7 +38,16 @@ func (engine *RetryEngine) NextDelay(j *job.Job) time.Duration {
 	return delay + jitter
 }
 
-func (engine *RetryEngine) HandleFailure(j *job.Job) {
+func (engine *RetryEngine) HandleFailure(ctx context.Context, j *job.Job) {
+	select {
+	case <-ctx.Done():
+		err := ctx.Err()
+		j.Error="Context not found during handle failure"
+		fmt.Printf("Handle failure: during contextCheck : %v", err)
+		return
+	default:
+	}
+
 	if ShouldRetry(j) {
 		j.RetryCount++
 
@@ -43,18 +55,27 @@ func (engine *RetryEngine) HandleFailure(j *job.Job) {
 
 		j.RunAfter = time.Now().Add(delay)
 
-		err := engine.store.UpdateStatus(context.Background(), j.ID, job.StatusPending)
+		err := engine.store.UpdateStatus(ctx, j.ID, job.StatusPending)
 		if err != nil {
-			fmt.Printf("Handle failure: %v", err)
+			j.Error = "Cannot update status to pending while retrying"
+			fmt.Printf("Handle failure: updateStatus to pending : %v", err)
 		}
 
-		engine.queue.Enequeue(context.Background(), j)
+		err = engine.queue.Enqueue(ctx, j)
+		if err != nil {
+			j.Error = "Not able to enqueue the job"
+			fmt.Printf("Handle failure: enqueue job : %v", err)
+		}
 
 		return
 	}
 
 	// Max retries exceeded
-	engine.store.UpdateStatus(context.Background(), j.ID, job.StatusDead)
+	err := engine.store.UpdateStatus(ctx, j.ID, job.StatusDead)
+	if err != nil {
+		j.Error = "Cannot update status to dead"
+		fmt.Printf("Handle failure: updateStatus to dead : %v", err)
+	}
 
 	// Push into our dlq
 	// TODO: push to DLQ
