@@ -2,6 +2,9 @@ package worker
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -11,11 +14,15 @@ import (
 	"github.com/Aryan9inja/gotaskq/internal/retry"
 )
 
+type HandlerGet interface {
+	Get(jobType string) (handler.Handler, bool)
+}
+
 type Pool struct {
 	queue    queue.Queue
 	store    job.Store
-	registry *handler.Registry
-	retry    *retry.RetryEngine // Not defined yet
+	registry HandlerGet
+	retry    *retry.Engine
 	// dlq
 	// metrics
 	numWorkers int
@@ -51,35 +58,69 @@ func (pool *Pool) runWorker(id int) {
 				continue
 			}
 
-			pool.processJob(job)
+			if err := pool.processJob(job); err != nil {
+				log.Printf("worker %d: failed to process job %s: %v", id, job.ID, err)
+			}
 		}
 	}
 }
 
-func (pool *Pool) processJob(j *job.Job) {
+func (pool *Pool) processJob(j *job.Job) (err error) {
+	if j == nil {
+		return errors.New("nil job")
+	}
+
 	// 1. Mark the job as running
-	_ = pool.store.UpdateStatus(pool.ctx, j.ID, job.StatusRunning)
+	err = pool.store.UpdateStatus(pool.ctx, j.ID, job.StatusRunning)
+	if err != nil {
+		return fmt.Errorf("failed to mark job %s as running: %w", j.ID, err)
+	}
 
 	defer func() {
 		if r := recover(); r != nil {
-			_ = pool.store.UpdateStatus(pool.ctx, j.ID, job.StatusFailed)
+			panicErr := fmt.Errorf("panic while processing job %s: %v", j.ID, r)
+			statusErr := pool.store.UpdateStatus(pool.ctx, j.ID, job.StatusFailed)
+			if statusErr != nil {
+				err = errors.Join(panicErr, fmt.Errorf("failed to mark job %s as failed after panic: %w", j.ID, statusErr))
+				return
+			}
+			err = panicErr
 		}
 	}()
 
 	// 2. Get handler
 	hand, ok := pool.registry.Get(j.Type)
 	if !ok {
-		_ = pool.store.UpdateStatus(pool.ctx, j.ID, job.StatusFailed)
-		return
+		statusErr := pool.store.UpdateStatus(pool.ctx, j.ID, job.StatusFailed)
+		if statusErr != nil {
+			return errors.Join(
+				fmt.Errorf("no handler registered for job type %s", j.Type),
+				fmt.Errorf("failed to mark job %s as failed: %w", j.ID, statusErr),
+			)
+		}
+
+		return fmt.Errorf("no handler registered for job type %s", j.Type)
 	}
 
 	// 3. Execute the handler we got
-	err := hand.Handle(pool.ctx, j)
+	err = hand.Handle(pool.ctx, j)
 	if err != nil {
-		_ = pool.store.UpdateStatus(pool.ctx, j.ID, job.StatusFailed)
-		return
+		statusErr := pool.store.UpdateStatus(pool.ctx, j.ID, job.StatusFailed)
+		if statusErr != nil {
+			return errors.Join(
+				fmt.Errorf("handler failed for job %s: %w", j.ID, err),
+				fmt.Errorf("failed to mark job %s as failed: %w", j.ID, statusErr),
+			)
+		}
+
+		return fmt.Errorf("handler failed for job %s: %w", j.ID, err)
 	}
 
 	// 4. Mark the job as done
 	err = pool.store.UpdateStatus(pool.ctx, j.ID, job.StatusDone)
+	if err != nil {
+		return fmt.Errorf("failed to mark job %s as done: %w", j.ID, err)
+	}
+
+	return nil
 }
