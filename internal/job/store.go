@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 )
 
 type Store interface {
@@ -19,12 +20,18 @@ type inMemoryStore struct {
 	jobs map[string]*Job
 }
 
-func validateContext(ctx context.Context) error{
-	if ctx == nil{
+func NewMemoryStore() *inMemoryStore{
+	return &inMemoryStore{
+		jobs: make(map[string]*Job),
+	}
+}
+
+func validateContext(ctx context.Context) error {
+	if ctx == nil {
 		return errors.New("Context is null")
 	}
 
-	select{
+	select {
 	case <-ctx.Done():
 		return ctx.Err()
 	default:
@@ -37,7 +44,7 @@ func (store *inMemoryStore) Save(ctx context.Context, job *Job) error {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 
-	err:=validateContext(ctx)
+	err := validateContext(ctx)
 	if err != nil {
 		return err
 	}
@@ -51,7 +58,7 @@ func (store *inMemoryStore) Get(ctx context.Context, id string) (*Job, error) {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
 
-	err:=validateContext(ctx)
+	err := validateContext(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +88,7 @@ func (store *inMemoryStore) UpdateStatus(ctx context.Context, id string, status 
 	store.mu.Lock()
 	defer store.mu.Unlock()
 
-	err:=validateContext(ctx)
+	err := validateContext(ctx)
 	if err != nil {
 		return err
 	}
@@ -96,15 +103,16 @@ func (store *inMemoryStore) UpdateStatus(ctx context.Context, id string, status 
 	}
 
 	job.Status = status
+	job.UpdatedAt = time.Now()
 
 	return nil
 }
 
-func(store *inMemoryStore) Delete(ctx context.Context, id string) error{
+func (store *inMemoryStore) Delete(ctx context.Context, id string) error {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 
-	err:=validateContext(ctx)
+	err := validateContext(ctx)
 	if err != nil {
 		return err
 	}
