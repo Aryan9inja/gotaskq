@@ -72,7 +72,7 @@ func NewMemoryQueue(name string) *MemoryQueue {
 	return memQueue
 }
 
-func (memQueue *MemoryQueue) Enequeue(ctx context.Context, job *job.Job) error {
+func (memQueue *MemoryQueue) Enqueue(ctx context.Context, job *job.Job) error {
 	memQueue.mu.Lock()
 	defer memQueue.mu.Unlock()
 
