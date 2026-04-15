@@ -22,13 +22,35 @@ type Pool struct {
 	queue    queue.Queue
 	store    job.Store
 	registry HandlerGet
-	retry    *retry.Engine
+	retry    retry.Engine
 	// dlq
 	// metrics
 	numWorkers int
 	wg         sync.WaitGroup
 	ctx        context.Context
 	cancel     context.CancelFunc
+}
+
+func NewWorkerPool(parentCtx context.Context, q queue.Queue, st job.Store, registry HandlerGet, rtry retry.Engine, numWorkers int) *Pool {
+	if numWorkers <= 0 {
+		numWorkers = 1
+	}
+
+	if parentCtx == nil {
+		parentCtx = context.Background()
+	}
+
+	ctx, cancel := context.WithCancel(parentCtx)
+
+	return &Pool{
+		queue:      q,
+		store:      st,
+		registry:   registry,
+		retry:      rtry,
+		numWorkers: numWorkers,
+		ctx:        ctx,
+		cancel:     cancel,
+	}
 }
 
 func (pool *Pool) Start() {
