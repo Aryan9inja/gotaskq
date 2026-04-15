@@ -9,6 +9,9 @@ import (
 	"github.com/Aryan9inja/gotaskq/internal/job"
 	"github.com/Aryan9inja/gotaskq/internal/queue"
 )
+type Engine interface{
+	HandleFailure(ctx context.Context, j *job.Job)
+}
 
 type RetryEngine struct {
 	store    job.Store
@@ -16,8 +19,12 @@ type RetryEngine struct {
 	MaxDelay time.Duration
 }
 
-type Engine interface{
-	HandleFailure(ctx context.Context, j *job.Job)
+func NewRetryEngine(st job.Store, q queue.Queue, maxDelay time.Duration) *RetryEngine{
+	return &RetryEngine{
+		store: st,
+		queue: q,
+		MaxDelay: maxDelay,
+	}
 }
 
 func ShouldRetry(j *job.Job) bool {
