@@ -3,7 +3,7 @@ package api
 import (
 	"net/http"
 
-	"github.com/Aryan9inja/gotaskq/internal/api/handler"
+	"github.com/Aryan9inja/gotaskq/internal/api/handlers"
 	"github.com/Aryan9inja/gotaskq/internal/job"
 	"github.com/Aryan9inja/gotaskq/internal/queue"
 	"github.com/Aryan9inja/gotaskq/pkg/snowflake"
@@ -26,7 +26,7 @@ func NewServer(st job.Store, qm *queue.QueueManager, idGen *snowflake.Snowflake)
 
 func (s *Server) Start(addr string) error{
 	r := chi.NewRouter()
-	h := handler.New(s.store, s.queueManager, s.idGenerator)
+	h := handlers.New(s.store, s.queueManager, s.idGenerator)
 
 	// Route definition here
 	r.Post("/jobs", h.CreateJob)
