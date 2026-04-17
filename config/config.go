@@ -1,15 +1,15 @@
 package config
 
-import(
+import (
 	"os"
 	"strconv"
 )
 
-type Config struct{
-	Port string
+type Config struct {
+	Port       string
 	MaxRetries int
-	BaseDelay int
-	MaxDelay int
+	BaseDelay  int
+	MaxDelay   int
 	NumWorkers int
 }
 
@@ -26,11 +26,16 @@ func envToInt(v string, defaultValue int) int {
 func LoadConfig() *Config {
 	// Load from env or file
 	return &Config{
-		Port: os.Getenv("PORT"),
+		Port: func() string {
+			if port := os.Getenv("PORT"); port != "" {
+				return port
+			}
+			return "8000"
+		}(),
 
 		MaxRetries: envToInt(os.Getenv("MAX_RETRIES"), 5),
-		BaseDelay: envToInt(os.Getenv("BASE_DELAY"), 100),
-		MaxDelay: envToInt(os.Getenv("MAX_DELAY"), 5000),
+		BaseDelay:  envToInt(os.Getenv("BASE_DELAY"), 100),
+		MaxDelay:   envToInt(os.Getenv("MAX_DELAY"), 5000),
 		NumWorkers: envToInt(os.Getenv("NUM_WORKERS"), 10),
 	}
 }
