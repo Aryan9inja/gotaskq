@@ -65,3 +65,10 @@ gotaskq/
 | Concurrency primitive | Mutex for queue, channels for dispatch | Mutex = shared state protection, channels = coordination |
 | Persistence | Pluggable (memory/Redis) | Lets you demo both, shows abstraction thinking |
 | Retry strategy | Exponential backoff | Avoids thundering herd on downstream failures |
+
+
+## Future Improvements:
+- Multiple QUEUE support
+- A way to add handlers for different job types
+- redis backend for production use, in-memory for development/testing
+- metrics for monitoring queue length, job processing times, failure rates
