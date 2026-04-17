@@ -1,0 +1,18 @@
+# Changelog
+
+This file tracks release history and links to full version changelog documents.
+
+## Version Index
+- [v1.0-alpha-in-memory-queue](v1.0-alpha-in-memory-queue.md) - 2026-04-17
+
+## Version Notes
+
+### v1.0-alpha-in-memory-queue
+- Full report: [v1.0-alpha-in-memory-queue.md](v1.0-alpha-in-memory-queue.md)
+- Release scope: first complete in-memory execution path from HTTP submit to asynchronous worker completion.
+- Runtime model: heap-based scheduler with deterministic dequeue order (`run_after` -> `priority` -> `created_at` -> `id`).
+- Concurrency model: goroutine-based worker pool with context-driven stop and wait-group drain.
+- Interface readiness: queue/store abstractions and handler lookup seam are in place for backend and execution-path evolution.
+- Retry posture: exponential backoff, delay cap, and jitter are implemented; worker failure-path integration remains a pending step.
+- Current constraints: in-memory state only, DLQ flow incomplete, metrics not yet instrumented, minimal API surface for alpha stabilization.
+- Recommended use: local validation and integration prototyping before Redis-backed persistence and full reliability pathways.
