@@ -81,8 +81,10 @@ func (memQueue *MemoryQueue) Enqueue(ctx context.Context, job *job.Job) error {
 		job.RunAfter = job.CreatedAt.Add(job.Delay)
 	}
 
+	// if runAfter is before now
+	// make runAfter now
 	if job.RunAfter.Before(time.Now()) {
-		return errors.New("job should run now or after now")
+		job.RunAfter = time.Now()
 	}
 
 	heap.Push(&memQueue.jobH, job)
@@ -108,12 +110,12 @@ func (memQueue *MemoryQueue) Dequeue(ctx context.Context) (j *job.Job, error err
 	return j, nil
 }
 
-func (memQueue *MemoryQueue) Len() int{
+func (memQueue *MemoryQueue) Len() int {
 	memQueue.mu.RLock()
 	defer memQueue.mu.RUnlock()
 	return memQueue.jobH.Len()
 }
 
-func (memQueue *MemoryQueue) Name() string{
+func (memQueue *MemoryQueue) Name() string {
 	return memQueue.name
 }
