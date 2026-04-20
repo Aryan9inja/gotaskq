@@ -111,7 +111,7 @@ while true do
 	end
 
 	local member = items[1]
-	local score = tonumbers(items[2])
+	local score = tonumber(items[2])
 
 	if score > nowMs then
 		return {1}
