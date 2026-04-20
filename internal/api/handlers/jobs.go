@@ -21,7 +21,7 @@ type CreateJobRequest struct {
 func (h *Handler) CreateJob(w http.ResponseWriter, r *http.Request) {
 	var req CreateJobRequest
 
-	q, err := h.queueManager.Get("default")
+	q, err := h.queueManager.DefaultQueue()
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "can't get default queue")
 		return
