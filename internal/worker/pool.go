@@ -97,6 +97,7 @@ func (pool *Pool) processJob(j *job.Job) (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to mark job %s as running: %w", j.ID, err)
 	}
+	j.Status = job.StatusRunning
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -106,6 +107,7 @@ func (pool *Pool) processJob(j *job.Job) (err error) {
 				err = errors.Join(panicErr, fmt.Errorf("failed to mark job %s as failed after panic: %w", j.ID, statusErr))
 				return
 			}
+			j.Status = job.StatusFailed
 			err = panicErr
 		}
 	}()
@@ -120,6 +122,7 @@ func (pool *Pool) processJob(j *job.Job) (err error) {
 				fmt.Errorf("failed to mark job %s as failed: %w", j.ID, statusErr),
 			)
 		}
+		j.Status = job.StatusFailed
 
 		return fmt.Errorf("no handler registered for job type %s", j.Type)
 	}
@@ -134,6 +137,7 @@ func (pool *Pool) processJob(j *job.Job) (err error) {
 				fmt.Errorf("failed to mark job %s as failed: %w", j.ID, statusErr),
 			)
 		}
+		j.Status = job.StatusFailed
 
 		return fmt.Errorf("handler failed for job %s: %w", j.ID, err)
 	}
@@ -143,6 +147,7 @@ func (pool *Pool) processJob(j *job.Job) (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to mark job %s as done: %w", j.ID, err)
 	}
+	j.Status = job.StatusDone
 
 	return nil
 }
