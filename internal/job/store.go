@@ -315,6 +315,72 @@ func redisJobKey(id string) string {
 	return fmt.Sprintf("%s:%s", redisJobKeyPrefix, id)
 }
 
+func redisInterfaceToInt64(v any) (int64, error) {
+	switch val := v.(type) {
+	case int64:
+		return val, nil
+	case int:
+		return int64(val), nil
+	case string:
+		parsed, err := strconv.ParseInt(val, 10, 64)
+		if err != nil {
+			return 0, err
+		}
+		return parsed, nil
+	default:
+		return 0, fmt.Errorf("unsupported type %T", v)
+	}
+}
+
+func redisStringValue(v any) (string, error) {
+	switch val := v.(type) {
+	case string:
+		return val, nil
+	case []byte:
+		return string(val), nil
+	default:
+		return "", fmt.Errorf("unsupported type %T", v)
+	}
+}
+
+// ==================================
+// Lua Script to update status of job
+// ==================================
+/**
+* Takes one key - RedisJobKey
+* Take 2 arguments - to status, currTime
+* Return Format ->
+* {0} = job is invalid
+* {1, string} = you tried wrong state transition and here is the state transition
+* {2} = everything succeeded
+ */
+const updateStatusLua = `
+local currentStatus = redis.call('HGET', KEYS[1], 'status')
+
+if not currentStatus then
+	return {0}
+end
+
+local from = currentStatus
+local to = ARGV[1]
+local now = ARGV[2]
+
+if from == 'PENDING' then
+	valid = (to == 'RUNNING')
+elseif from == 'RUNNING' then
+	valid = (to == 'DONE' or to == 'FAILED')
+elseif from == 'FAILED' then
+	valid = (to == 'PENDING' or to == 'DEAD')
+end
+
+if not valid then 
+	return {1, from}
+end
+
+redis.call('HSET', KEYS[1], 'status', to, 'updated_at', now)
+return {2}
+`
+
 // ================================
 // Redis based Store Implementation
 // ================================
@@ -382,4 +448,54 @@ func (store *redisStore) Delete(ctx context.Context, id string) error {
 	}
 
 	return nil
+}
+
+func (store *redisStore) UpdateStatus(ctx context.Context, id string, status Status) error {
+	err := validateContext(ctx)
+	if err != nil {
+		return err
+	}
+
+	if id == "" {
+		return ErrEmptyJobID
+	}
+
+	res, err := store.client.Eval(
+		ctx,
+		updateStatusLua,
+		[]string{redisJobKey(id)},
+		string(status),
+		encodeTimeValue(time.Now()),
+	).Result()
+	if err != nil {
+		return fmt.Errorf("update job %s status in redis failed: %w", id, err)
+	}
+
+	parts, ok := res.([]any)
+	if !ok || len(parts) == 0 {
+		return errors.New("unexpected redis status update response")
+	}
+
+	code, convErr := redisInterfaceToInt64(parts[0])
+	if convErr != nil {
+		return fmt.Errorf("invalid redis status update code: %w", err)
+	}
+
+	switch code {
+	case 0:
+		return ErrJobNotFound
+	case 1:
+		current := ""
+		if len(parts) > 1 {
+			current, _ = redisStringValue(parts[1])
+		}
+		if current == "" {
+			current = "unknown"
+		}
+		return fmt.Errorf("invalid transition: %s -> %s", current, string(status))
+	case 2:
+		return nil
+	default:
+		return fmt.Errorf("unknown redis status update code: %d", code)
+	}
 }
