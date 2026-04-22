@@ -66,6 +66,8 @@ func (engine *RetryEngine) HandleFailure(ctx context.Context, j *job.Job) {
 		if err != nil {
 			j.Error = "Cannot update status to pending while retrying"
 			fmt.Printf("Handle failure: updateStatus to pending : %v", err)
+		}else{
+			j.Status = job.StatusPending
 		}
 
 		err = engine.queue.Enqueue(ctx, j)
@@ -78,10 +80,18 @@ func (engine *RetryEngine) HandleFailure(ctx context.Context, j *job.Job) {
 	}
 
 	// Max retries exceeded
-	err := engine.store.UpdateStatus(ctx, j.ID, job.StatusDead)
+	j.Error = "Max retries exceeded"
+	err := engine.store.Save(ctx, j)
+	if err != nil {
+		fmt.Printf("Handle failure: save dead job state: %v", err)
+	}
+
+	err = engine.store.UpdateStatus(ctx, j.ID, job.StatusDead)
 	if err != nil {
 		j.Error = "Cannot update status to dead"
 		fmt.Printf("Handle failure: updateStatus to dead : %v", err)
+	}else{
+		j.Status = job.StatusDead
 	}
 
 	// Push into our dlq
