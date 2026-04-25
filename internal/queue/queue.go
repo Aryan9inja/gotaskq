@@ -12,3 +12,7 @@ type Queue interface {
 	Len() int
 	Name() string
 }
+
+type Notifications interface{
+	SubscribeNotifications(ctx context.Context) (<-chan struct{}, func(), error)
+}
