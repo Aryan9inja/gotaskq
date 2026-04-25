@@ -68,20 +68,46 @@ func (pool *Pool) Stop() {
 func (pool *Pool) runWorker(id int) {
 	defer pool.wg.Done()
 
+	var notifyCh <-chan struct{}
+	unsubscribe := func ()  {}
+
+	if notifier, ok := pool.queue.(queue.Notifications); ok{
+		ch, cancel, err := notifier.SubscribeNotifications(pool.ctx)
+		if err != nil {
+			log.Printf("worker %d: queue notification subscribe failed: %v", id, err)
+		}else{
+			notifyCh = ch
+			unsubscribe = cancel
+		}
+	}
+
+	defer unsubscribe()
+
 	for {
 		select {
 		case <-pool.ctx.Done():
 			return
 
 		default:
-			job, err := pool.queue.Dequeue(pool.ctx)
+			dequeuedJob, err := pool.queue.Dequeue(pool.ctx)
 			if err != nil {
+				if notifyCh!=nil{
+					select {
+					case <-pool.ctx.Done():
+						return
+					case <-notifyCh:
+					case <-time.After(100*time.Millisecond):
+					}
+
+					continue
+				}
+
 				time.Sleep(100 * time.Millisecond)
 				continue
 			}
 
-			if err := pool.processJob(job); err != nil {
-				log.Printf("worker %d: failed to process job %s: %v", id, job.ID, err)
+			if err := pool.processJob(dequeuedJob); err != nil {
+				log.Printf("worker %d: failed to process job %s: %v", id, dequeuedJob.ID, err)
 			}
 		}
 	}
@@ -108,6 +134,8 @@ func (pool *Pool) processJob(j *job.Job) (err error) {
 				return
 			}
 			j.Status = job.StatusFailed
+			pool.retry.HandleFailure(pool.ctx, j)
+
 			err = panicErr
 		}
 	}()
@@ -123,6 +151,7 @@ func (pool *Pool) processJob(j *job.Job) (err error) {
 			)
 		}
 		j.Status = job.StatusFailed
+		pool.retry.HandleFailure(pool.ctx, j)
 
 		return fmt.Errorf("no handler registered for job type %s", j.Type)
 	}
@@ -138,6 +167,7 @@ func (pool *Pool) processJob(j *job.Job) (err error) {
 			)
 		}
 		j.Status = job.StatusFailed
+		pool.retry.HandleFailure(pool.ctx, j)
 
 		return fmt.Errorf("handler failed for job %s: %w", j.ID, err)
 	}
