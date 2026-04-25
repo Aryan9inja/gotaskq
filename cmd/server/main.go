@@ -17,6 +17,7 @@ import (
 	"github.com/Aryan9inja/gotaskq/internal/retry"
 	"github.com/Aryan9inja/gotaskq/internal/worker"
 	"github.com/Aryan9inja/gotaskq/pkg/snowflake"
+	"github.com/redis/go-redis/v9"
 )
 
 type logHandler struct{}
@@ -40,51 +41,88 @@ func (logHandler) Handle(ctx context.Context, job *job.Job) error {
 }
 
 func main() {
-	fmt.Println("Starting the service")
+	log.Println("Starting the service")
 	// 1. Load the config
 	cfg := config.LoadConfig()
 
-	// 2. Create a job store
-	jobStore := job.NewMemoryStore()
+	// 2. Create a queue + job store backend from config
+	var (
+		jobStore  job.Store
+		mainQueue queue.Queue
+	)
+
+	if cfg.UseRedis {
+		if cfg.RedisUrl == "" {
+			log.Fatal("USE_REDIS = true but REDIS_URL is empty")
+		}
+
+		redisOpt, err := redis.ParseURL(cfg.RedisUrl)
+		if err != nil {
+			log.Fatalf("invalid REDIS_URL: %v", err)
+		}
+
+		redisClient := redis.NewClient(redisOpt)
+		if err := redisClient.Ping(context.Background()).Err(); err != nil {
+			log.Fatalf("failed to connect to redis: %v", err)
+		}
+		defer func() {
+			if err := redisClient.Close(); err != nil {
+				log.Printf("failed to close redis client: %v", err)
+			}
+		}()
+
+		redisStore,err := job.NewRedisStore(redisClient)
+		if err != nil {
+			log.Fatalf("failed to create redis job store: %v", err)
+		}
+
+		redisQueue, err:=queue.NewRedisQueue("default", redisClient)
+		if err != nil {
+			log.Fatalf("failed to create redis queue: %v", err)
+		}
+
+		jobStore = redisStore
+		mainQueue = redisQueue
+	}else{
+		jobStore = job.NewMemoryStore()
+		mainQueue = queue.NewMemoryQueue("default")
+	}
 
 	// 3. Create an ID generator
 	snowflakeGen := snowflake.New(1)
 
-	// 4. Create a default queue
-	memQueue := queue.NewMemoryQueue("default")
-
-	// 5. Register the created queue
+	// 4. Register the created queue
 	queueManager := queue.NewQueueManager()
-	err := queueManager.Register(memQueue)
+	err := queueManager.Register(mainQueue)
 	if err != nil {
 		log.Fatalf("error registering queue: %v", err)
 	}
 
-	// 6. Create hanlder register
+	// 5. Create hanlder register
 	handlerRegistry := handler.NewRegistry()
 
-	// 7. Register test handler
+	// 6. Register test handler
 	handlerRegistry.Register("logger", logHandler{})
 
-	// 8. Create a retry engine
-	retryEngine := retry.NewRetryEngine(jobStore, memQueue, time.Duration(cfg.MaxDelay))
+	// 7. Create a retry engine
+	retryEngine := retry.NewRetryEngine(jobStore, mainQueue, time.Duration(cfg.MaxDelay))
 
-	// 9. Create a worker pool
+	// 8. Create a worker pool
 	workerPool := worker.NewWorkerPool(
 		context.Background(),
-		memQueue, jobStore,
+		mainQueue, jobStore,
 		handlerRegistry,
 		retryEngine,
 		cfg.NumWorkers,
 	)
 
-	// 10. Start worker pool
+	// 9. Start worker pool
 	workerPool.Start()
 
-	// 11. Create http server
+	// 10. Create http server
 	apiServer := api.NewServer(jobStore, queueManager, snowflakeGen)
 
-	// 12. Spawn server in a goroutine
+	// 11. Spawn server in a goroutine
 	go func() {
 		err := apiServer.Start(":" + cfg.Port)
 		if err != nil {
