@@ -17,6 +17,8 @@ const redisQueueKeyPrefix = "gotaskq:queue"
 const redisQueuePayloadKeySuffix = "payloads"
 const redisSortableFieldWidth = 20
 
+const pubSubNotificationKeyPrefix = "gotaskq:notify"
+
 var redisSortableSignBit = uint64(1) << 63
 
 var (
@@ -27,6 +29,7 @@ type RedisQueue struct {
 	name       string
 	key        string
 	payloadKey string
+	notifyKey  string
 	client     redis.UniversalClient
 }
 
@@ -145,6 +148,7 @@ func NewRedisQueue(name string, client redis.UniversalClient) (*RedisQueue, erro
 		name:       queueName,
 		key:        fmt.Sprintf("%s:%s:pending", redisQueueKeyPrefix, queueName),
 		payloadKey: fmt.Sprintf("%s:%s:%s", redisQueueKeyPrefix, queueName, redisQueuePayloadKeySuffix),
+		notifyKey:  fmt.Sprintf("%s:%s", pubSubNotificationKeyPrefix, queueName),
 		client:     client,
 	}, nil
 }
@@ -179,6 +183,7 @@ func (redisQueue *RedisQueue) Enqueue(ctx context.Context, j *job.Job) error {
 			Score:  float64(j.RunAfter.UnixMilli()),
 			Member: member,
 		})
+		pipe.Publish(ctx, redisQueue.notifyKey, member)
 		return nil
 	})
 
@@ -253,4 +258,45 @@ func (redisQueue *RedisQueue) Len() int {
 
 func (redisQueue *RedisQueue) Name() string {
 	return redisQueue.name
+}
+
+// ================================
+// Notification Subscriber function
+// ================================
+func (redisQueue *RedisQueue) SubscribeNotifications(ctx context.Context) (
+	<-chan struct{},
+	func(),
+	error,
+) {
+	if err := validateContext(ctx); err != nil {
+		return nil, nil, err
+	}
+
+	pubsub := redisQueue.client.Subscribe(ctx, redisQueue.notifyKey)
+	if _, err := pubsub.Receive(ctx); err!=nil{
+		_ = pubsub.Close()
+		return nil, nil, fmt.Errorf("subscribe queue notification failed: %w", err)
+	}
+
+	notification := make(chan struct{}, 1)
+
+	go func(){
+		for{
+			_, err:= pubsub.ReceiveMessage(ctx)
+			if err != nil {
+				return
+			}
+
+			select{
+			case notification <- struct{}{}:
+			default:
+			}
+		}
+	}()
+
+	unsubscribe := func(){
+		_ = pubsub.Close()
+	}
+
+	return notification, unsubscribe, nil
 }
