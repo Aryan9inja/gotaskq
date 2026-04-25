@@ -11,6 +11,8 @@ type Config struct {
 	BaseDelay  int
 	MaxDelay   int
 	NumWorkers int
+	UseRedis   bool
+	RedisUrl   string
 }
 
 func envToInt(v string, defaultValue int) int {
@@ -37,5 +39,7 @@ func LoadConfig() *Config {
 		BaseDelay:  envToInt(os.Getenv("BASE_DELAY"), 100),
 		MaxDelay:   envToInt(os.Getenv("MAX_DELAY"), 5000),
 		NumWorkers: envToInt(os.Getenv("NUM_WORKERS"), 10),
+		UseRedis: os.Getenv("USE_REDIS") == "true",
+		RedisUrl: os.Getenv("REDIS_URL"),
 	}
 }
