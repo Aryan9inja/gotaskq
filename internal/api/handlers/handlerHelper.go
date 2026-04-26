@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/Aryan9inja/gotaskq/internal/dlq"
 	"github.com/Aryan9inja/gotaskq/internal/job"
 	"github.com/Aryan9inja/gotaskq/internal/queue"
 	"github.com/Aryan9inja/gotaskq/pkg/snowflake"
@@ -13,13 +14,15 @@ type Handler struct {
 	store        job.Store
 	queueManager *queue.QueueManager
 	idGenerator  *snowflake.Snowflake
+	dlqStore dlq.DlqInterface
 }
 
-func New(st job.Store, qm *queue.QueueManager, idGen *snowflake.Snowflake) *Handler {
+func New(st job.Store, qm *queue.QueueManager, idGen *snowflake.Snowflake, dlqStore dlq.DlqInterface) *Handler {
 	return &Handler{
 		store:        st,
 		queueManager: qm,
 		idGenerator:  idGen,
+		dlqStore: dlqStore,
 	}
 }
 
