@@ -11,6 +11,7 @@ import (
 
 	"github.com/Aryan9inja/gotaskq/config"
 	"github.com/Aryan9inja/gotaskq/internal/api"
+	"github.com/Aryan9inja/gotaskq/internal/dlq"
 	"github.com/Aryan9inja/gotaskq/internal/handler"
 	"github.com/Aryan9inja/gotaskq/internal/job"
 	"github.com/Aryan9inja/gotaskq/internal/queue"
@@ -49,6 +50,7 @@ func main() {
 	var (
 		jobStore  job.Store
 		mainQueue queue.Queue
+		dlqStore dlq.DlqInterface
 	)
 
 	if cfg.UseRedis {
@@ -81,11 +83,18 @@ func main() {
 			log.Fatalf("failed to create redis queue: %v", err)
 		}
 
+		redisDlq, err := dlq.NewRedisDlq(redisClient)
+		if err != nil {
+			log.Fatalf("failed to create redis dlq store: %v", err)
+		}
+
 		jobStore = redisStore
 		mainQueue = redisQueue
+		dlqStore = redisDlq
 	}else{
 		jobStore = job.NewMemoryStore()
 		mainQueue = queue.NewMemoryQueue("default")
+		dlqStore = nil
 	}
 
 	// 3. Create an ID generator
@@ -105,7 +114,7 @@ func main() {
 	handlerRegistry.Register("logger", logHandler{})
 
 	// 7. Create a retry engine
-	retryEngine := retry.NewRetryEngine(jobStore, mainQueue, time.Duration(cfg.MaxDelay))
+	retryEngine := retry.NewRetryEngine(jobStore, mainQueue, time.Duration(cfg.MaxDelay), dlqStore)
 
 	// 8. Create a worker pool
 	workerPool := worker.NewWorkerPool(
@@ -120,7 +129,7 @@ func main() {
 	workerPool.Start()
 
 	// 10. Create http server
-	apiServer := api.NewServer(jobStore, queueManager, snowflakeGen)
+	apiServer := api.NewServer(jobStore, queueManager, snowflakeGen, dlqStore)
 
 	// 11. Spawn server in a goroutine
 	go func() {
