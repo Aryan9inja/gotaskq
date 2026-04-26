@@ -6,10 +6,12 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/Aryan9inja/gotaskq/internal/dlq"
 	"github.com/Aryan9inja/gotaskq/internal/job"
 	"github.com/Aryan9inja/gotaskq/internal/queue"
 )
-type Engine interface{
+
+type Engine interface {
 	HandleFailure(ctx context.Context, j *job.Job)
 }
 
@@ -17,13 +19,15 @@ type RetryEngine struct {
 	store    job.Store
 	queue    queue.Queue
 	MaxDelay time.Duration
+	dlq      dlq.DlqInterface
 }
 
-func NewRetryEngine(st job.Store, q queue.Queue, maxDelay time.Duration) *RetryEngine{
+func NewRetryEngine(st job.Store, q queue.Queue, maxDelay time.Duration, dlqStore dlq.DlqInterface) *RetryEngine {
 	return &RetryEngine{
-		store: st,
-		queue: q,
+		store:    st,
+		queue:    q,
 		MaxDelay: maxDelay,
+		dlq: dlqStore,
 	}
 }
 
@@ -49,7 +53,7 @@ func (engine *RetryEngine) HandleFailure(ctx context.Context, j *job.Job) {
 	select {
 	case <-ctx.Done():
 		err := ctx.Err()
-		j.Error="Context not found during handle failure"
+		j.Error = "Context not found during handle failure"
 		fmt.Printf("Handle failure: during contextCheck : %v", err)
 		return
 	default:
@@ -66,7 +70,7 @@ func (engine *RetryEngine) HandleFailure(ctx context.Context, j *job.Job) {
 		if err != nil {
 			j.Error = "Cannot update status to pending while retrying"
 			fmt.Printf("Handle failure: updateStatus to pending : %v", err)
-		}else{
+		} else {
 			j.Status = job.StatusPending
 		}
 
@@ -90,10 +94,18 @@ func (engine *RetryEngine) HandleFailure(ctx context.Context, j *job.Job) {
 	if err != nil {
 		j.Error = "Cannot update status to dead"
 		fmt.Printf("Handle failure: updateStatus to dead : %v", err)
-	}else{
+	} else {
 		j.Status = job.StatusDead
 	}
 
 	// Push into our dlq
-	// TODO: push to DLQ
+	if engine.dlq == nil {
+		fmt.Printf("Handle failure: dlq is nil, cannot persist dead job %s", j.ID)
+		return
+	}
+
+	err = engine.dlq.Save(ctx, j)
+	if err != nil {
+		fmt.Printf("Handle failure: save dead job to dlq: %v", err)
+	}
 }
