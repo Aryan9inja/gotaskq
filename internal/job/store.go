@@ -365,6 +365,8 @@ local from = currentStatus
 local to = ARGV[1]
 local now = ARGV[2]
 
+local valid = false
+
 if from == 'PENDING' then
 	valid = (to == 'RUNNING')
 elseif from == 'RUNNING' then
