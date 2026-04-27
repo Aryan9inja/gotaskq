@@ -34,7 +34,7 @@ func (logHandler) Handle(ctx context.Context, job *job.Job) error {
 	fmt.Println("Type:", job.Type)
 	fmt.Println("Status:", job.Status)
 
-	time.Sleep(30 * time.Second)
+	time.Sleep(500 * time.Millisecond)
 
 	fmt.Println("Job Done")
 
@@ -54,6 +54,7 @@ func main() {
 	)
 
 	if cfg.UseRedis {
+		log.Println("Using redis based backend")
 		if cfg.RedisUrl == "" {
 			log.Fatal("USE_REDIS = true but REDIS_URL is empty")
 		}
@@ -92,6 +93,7 @@ func main() {
 		mainQueue = redisQueue
 		dlqStore = redisDlq
 	}else{
+		log.Println("Using in memory backend")
 		jobStore = job.NewMemoryStore()
 		mainQueue = queue.NewMemoryQueue("default")
 		dlqStore = nil
