@@ -12,6 +12,7 @@ import (
 	"github.com/Aryan9inja/gotaskq/internal/job"
 	"github.com/Aryan9inja/gotaskq/internal/queue"
 	"github.com/Aryan9inja/gotaskq/internal/retry"
+	"github.com/Aryan9inja/gotaskq/internal/metrics"
 )
 
 type HandlerGet interface {
@@ -67,6 +68,8 @@ func (pool *Pool) Stop() {
 
 func (pool *Pool) runWorker(id int) {
 	defer pool.wg.Done()
+	metrics.IncActiveWorkers()
+	defer metrics.DecActiveWorkers()
 
 	var notifyCh <-chan struct{}
 	unsubscribe := func ()  {}
@@ -114,6 +117,23 @@ func (pool *Pool) runWorker(id int) {
 }
 
 func (pool *Pool) processJob(j *job.Job) (err error) {
+	queueName := "unknown"
+	if pool.queue != nil{
+		queueName = pool.queue.Name()
+	}
+
+	jobType := "unknown"
+	if j != nil{
+		jobType = j.Type
+	}
+
+	start := time.Now()
+	status := "failed"
+	defer func(){
+		metrics.ObserveJobDuration(queueName, jobType, time.Since(start))
+		metrics.IncJobsProcessed(queueName, jobType, status)
+	}()
+
 	if j == nil {
 		return errors.New("nil job")
 	}
@@ -178,6 +198,7 @@ func (pool *Pool) processJob(j *job.Job) (err error) {
 		return fmt.Errorf("failed to mark job %s as done: %w", j.ID, err)
 	}
 	j.Status = job.StatusDone
+	status = "done"
 
 	return nil
 }
