@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/Aryan9inja/gotaskq/internal/api/handlers"
 	"github.com/Aryan9inja/gotaskq/internal/dlq"
 	"github.com/Aryan9inja/gotaskq/internal/job"
@@ -32,6 +33,7 @@ func (s *Server) Start(addr string) error{
 	h := handlers.New(s.store, s.queueManager, s.idGenerator, s.dlqStore)
 
 	// Route definition here
+	r.Handle("/metrics", promhttp.Handler())
 	r.Post("/jobs", h.CreateJob)
 	r.Get("/jobs/{id}", h.GetJob)
 	r.Get("/dlq", h.ListDeadJobs)
