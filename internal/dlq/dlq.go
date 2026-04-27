@@ -8,10 +8,12 @@ import (
 	"time"
 
 	"github.com/Aryan9inja/gotaskq/internal/job"
+	"github.com/Aryan9inja/gotaskq/internal/metrics"
 	"github.com/redis/go-redis/v9"
 )
 
 const redisDlqKeyPrefix = "gotaskq:dlq"
+const defaultDlqLabel = "dlq"
 
 var (
 	ErrRedisClientNil = errors.New("redis client is nil")
@@ -111,6 +113,8 @@ func (dlq *RedisDlq) Save(ctx context.Context, j *job.Job) error {
 	if err != nil {
 		return fmt.Errorf("save dead job %s in redis failed: %w", j.ID, err)
 	}
+
+	metrics.IncJobsDead(defaultDlqLabel, j.Type)
 
 	return nil
 }
