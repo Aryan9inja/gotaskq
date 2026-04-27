@@ -9,6 +9,7 @@ import (
 	"github.com/Aryan9inja/gotaskq/internal/dlq"
 	"github.com/Aryan9inja/gotaskq/internal/job"
 	"github.com/Aryan9inja/gotaskq/internal/queue"
+	"github.com/Aryan9inja/gotaskq/internal/metrics"
 )
 
 type Engine interface {
@@ -50,6 +51,11 @@ func (engine *RetryEngine) NextDelay(j *job.Job) time.Duration {
 }
 
 func (engine *RetryEngine) HandleFailure(ctx context.Context, j *job.Job) {
+	queueName := "unknown"
+	if engine.queue != nil{
+		queueName = engine.queue.Name()
+	}
+
 	select {
 	case <-ctx.Done():
 		err := ctx.Err()
@@ -61,6 +67,7 @@ func (engine *RetryEngine) HandleFailure(ctx context.Context, j *job.Job) {
 
 	if ShouldRetry(j) {
 		j.RetryCount++
+		metrics.IncJobsRetried(queueName, j.Type)
 
 		delay := engine.NextDelay(j)
 
