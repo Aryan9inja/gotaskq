@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Aryan9inja/gotaskq/internal/job"
+	"github.com/Aryan9inja/gotaskq/internal/metrics"
 )
 
 // ===================
@@ -69,6 +70,7 @@ func NewMemoryQueue(name string) *MemoryQueue {
 	}
 
 	heap.Init(&memQueue.jobH)
+	metrics.SetQueueDepth(memQueue.name, 0)
 	return memQueue
 }
 
@@ -88,6 +90,8 @@ func (memQueue *MemoryQueue) Enqueue(ctx context.Context, job *job.Job) error {
 	}
 
 	heap.Push(&memQueue.jobH, job)
+	metrics.IncJobsEnqueued(memQueue.name, job.Type)
+	metrics.SetQueueDepth(memQueue.name, memQueue.jobH.Len())
 	return nil
 }
 
@@ -107,13 +111,18 @@ func (memQueue *MemoryQueue) Dequeue(ctx context.Context) (j *job.Job, error err
 	}
 
 	j = heap.Pop(&memQueue.jobH).(*job.Job)
+
+	_ = memQueue.Len()
+
 	return j, nil
 }
 
 func (memQueue *MemoryQueue) Len() int {
 	memQueue.mu.RLock()
 	defer memQueue.mu.RUnlock()
-	return memQueue.jobH.Len()
+	depth := memQueue.jobH.Len()
+	metrics.SetQueueDepth(memQueue.name, depth)
+	return depth
 }
 
 func (memQueue *MemoryQueue) Name() string {
