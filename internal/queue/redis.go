@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Aryan9inja/gotaskq/internal/job"
+	"github.com/Aryan9inja/gotaskq/internal/metrics"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -144,13 +145,16 @@ func NewRedisQueue(name string, client redis.UniversalClient) (*RedisQueue, erro
 		return nil, ErrRedisClientNil
 	}
 
-	return &RedisQueue{
+	q := &RedisQueue{
 		name:       queueName,
 		key:        fmt.Sprintf("%s:%s:pending", redisQueueKeyPrefix, queueName),
 		payloadKey: fmt.Sprintf("%s:%s:%s", redisQueueKeyPrefix, queueName, redisQueuePayloadKeySuffix),
 		notifyKey:  fmt.Sprintf("%s:%s", pubSubNotificationKeyPrefix, queueName),
 		client:     client,
-	}, nil
+	}
+
+	metrics.SetQueueDepth(queueName, 0)
+	return q, nil
 }
 
 func (redisQueue *RedisQueue) Enqueue(ctx context.Context, j *job.Job) error {
@@ -190,6 +194,9 @@ func (redisQueue *RedisQueue) Enqueue(ctx context.Context, j *job.Job) error {
 	if err != nil {
 		return fmt.Errorf("enqueue redis transaction failed: %w", err)
 	}
+
+	metrics.IncJobsEnqueued(redisQueue.name, j.Type)
+	_ = redisQueue.Len()
 
 	return nil
 }
@@ -238,7 +245,7 @@ func (redisQueue *RedisQueue) Dequeue(ctx context.Context) (j *job.Job, error er
 		if err := json.Unmarshal([]byte(raw), &output); err != nil {
 			return nil, fmt.Errorf("unmarshal dequeue job failed: %w", err)
 		}
-
+		_ = redisQueue.Len()
 		return &output, nil
 	default:
 		return nil, fmt.Errorf("unknown redis dequeue status code: %d", code)
@@ -253,7 +260,10 @@ func (redisQueue *RedisQueue) Len() int {
 	if err != nil {
 		return 0
 	}
-	return int(count)
+
+	depth := int(count)
+	metrics.SetQueueDepth(redisQueue.name, depth)
+	return depth
 }
 
 func (redisQueue *RedisQueue) Name() string {
@@ -273,28 +283,28 @@ func (redisQueue *RedisQueue) SubscribeNotifications(ctx context.Context) (
 	}
 
 	pubsub := redisQueue.client.Subscribe(ctx, redisQueue.notifyKey)
-	if _, err := pubsub.Receive(ctx); err!=nil{
+	if _, err := pubsub.Receive(ctx); err != nil {
 		_ = pubsub.Close()
 		return nil, nil, fmt.Errorf("subscribe queue notification failed: %w", err)
 	}
 
 	notification := make(chan struct{}, 1)
 
-	go func(){
-		for{
-			_, err:= pubsub.ReceiveMessage(ctx)
+	go func() {
+		for {
+			_, err := pubsub.ReceiveMessage(ctx)
 			if err != nil {
 				return
 			}
 
-			select{
+			select {
 			case notification <- struct{}{}:
 			default:
 			}
 		}
 	}()
 
-	unsubscribe := func(){
+	unsubscribe := func() {
 		_ = pubsub.Close()
 	}
 
