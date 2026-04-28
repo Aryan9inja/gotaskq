@@ -34,7 +34,7 @@ func (logHandler) Handle(ctx context.Context, job *job.Job) error {
 	fmt.Println("Type:", job.Type)
 	fmt.Println("Status:", job.Status)
 
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(1 * time.Millisecond)
 
 	fmt.Println("Job Done")
 
