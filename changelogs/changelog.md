@@ -3,10 +3,17 @@
 This file tracks release history and links to full version changelog documents.
 
 ## Version Index
+- [v1.0](v1.0.md) - 2026-04-28
 - [v1.0-beta-redis-based-queue](v1.0-beta-redis-based-queue.md) - 2026-04-27
 - [v1.0-alpha-in-memory-queue](v1.0-alpha-in-memory-queue.md) - 2026-04-17
 
 ## Version Notes
+
+### v1.0
+- Full report: [v1.0.md](v1.0.md)
+- Release scope: stabilization release with Redis Lua compatibility fix and faster logger handler processing.
+- Performance baseline: stress-test run recorded with 100k requests at concurrency 500.
+- Metrics snapshot: enqueued/processed counts and active worker gauge captured under load.
 
 ### v1.0-beta-redis-based-queue
 - Full report: [v1.0-beta-redis-based-queue.md](v1.0-beta-redis-based-queue.md)
