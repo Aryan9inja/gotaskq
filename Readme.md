@@ -5,6 +5,10 @@ I Streamed the development of GoTaskQ live on YouTube, and the full playlist is 
 ### Stream playlist: https://youtube.com/playlist?list=PLeNxLCYqfeHTxEQ33yuftg5F-SzKoZKPh&si=GhwWzBpnHBsYaaJ3
 
 ## Architecture Overview
+### HLD
+<img width="1314" height="792" alt="HLD_gotaskq" src="https://github.com/user-attachments/assets/65e73fd4-00a6-48e5-8b6f-15a730f9504b" />
+
+### Architecture decisions
 1. API ingress
    - `POST /jobs` validates input, assigns a Snowflake ID, and persists job state.
 2. Persistence
