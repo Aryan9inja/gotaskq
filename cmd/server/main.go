@@ -48,9 +48,10 @@ func main() {
 
 	// 2. Create a queue + job store backend from config
 	var (
-		jobStore  job.Store
-		mainQueue queue.Queue
-		dlqStore dlq.DlqInterface
+		jobStore     job.Store
+		mainQueue    queue.Queue
+		dlqStore     dlq.DlqInterface
+		queueFactory queue.Factory
 	)
 
 	if cfg.UseRedis {
@@ -74,12 +75,17 @@ func main() {
 			}
 		}()
 
-		redisStore,err := job.NewRedisStore(redisClient)
+		redisStore, err := job.NewRedisStore(redisClient)
 		if err != nil {
 			log.Fatalf("failed to create redis job store: %v", err)
 		}
 
-		redisQueue, err:=queue.NewRedisQueue("default", redisClient)
+		redisFactory, err := queue.NewRedisFactory(redisClient)
+		if err != nil {
+			log.Fatalf("failed to create redis queue factory: %v", err)
+		}
+
+		redisQueue, err := redisFactory.New("default")
 		if err != nil {
 			log.Fatalf("failed to create redis queue: %v", err)
 		}
@@ -92,9 +98,11 @@ func main() {
 		jobStore = redisStore
 		mainQueue = redisQueue
 		dlqStore = redisDlq
-	}else{
+		queueFactory = redisFactory
+	} else {
 		log.Println("Using in memory backend")
 		jobStore = job.NewMemoryStore()
+		queueFactory = queue.NewMemoryFactory()
 		mainQueue = queue.NewMemoryQueue("default")
 		dlqStore = nil
 	}
@@ -131,7 +139,7 @@ func main() {
 	workerPool.Start()
 
 	// 10. Create http server
-	apiServer := api.NewServer(jobStore, queueManager, snowflakeGen, dlqStore)
+	apiServer := api.NewServer(jobStore, queueManager, snowflakeGen, dlqStore, queueFactory)
 
 	// 11. Spawn server in a goroutine
 	go func() {
