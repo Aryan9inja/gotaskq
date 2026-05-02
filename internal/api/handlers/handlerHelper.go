@@ -15,14 +15,16 @@ type Handler struct {
 	queueManager *queue.QueueManager
 	idGenerator  *snowflake.Snowflake
 	dlqStore dlq.DlqInterface
+	queueFactory queue.Factory
 }
 
-func New(st job.Store, qm *queue.QueueManager, idGen *snowflake.Snowflake, dlqStore dlq.DlqInterface) *Handler {
+func New(st job.Store, qm *queue.QueueManager, idGen *snowflake.Snowflake, dlqStore dlq.DlqInterface, factory queue.Factory) *Handler {
 	return &Handler{
 		store:        st,
 		queueManager: qm,
 		idGenerator:  idGen,
 		dlqStore: dlqStore,
+		queueFactory: factory,
 	}
 }
 
