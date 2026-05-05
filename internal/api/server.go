@@ -38,6 +38,7 @@ func (s *Server) Start(addr string) error {
 	r.Handle("/metrics", promhttp.Handler())
 	r.Post("/jobs", h.CreateJob)
 	r.Get("/jobs/{id}", h.GetJob)
+	r.Post("/{queue}/jobs",h.CreateJobOnQueue)
 	r.Get("/dlq", h.ListDeadJobs)
 	r.Post("/dlq/{id}/replay", h.ReplayDeadJob)
 	r.Delete("/dlq/{id}", h.DeleteDeadJob)
