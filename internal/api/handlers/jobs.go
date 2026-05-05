@@ -77,6 +77,67 @@ func (h *Handler) CreateJob(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusCreated, job)
 }
 
+func (h *Handler) CreateJobOnQueue(w http.ResponseWriter, r *http.Request){
+	var req CreateJobRequest
+
+	queueName := chi.URLParam(r, "queue")
+
+	q, err := h.queueManager.Get(queueName)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "can't get queue with this name")
+		return
+	}
+
+	// Validate body json
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		WriteError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+
+	// Validate the job data
+	if req.Type == "" {
+		WriteError(w, http.StatusBadRequest, "type is required")
+		return
+	}
+
+	if req.Priority < 0 || req.Priority > 10 {
+		WriteError(w, http.StatusBadRequest, "priority must be between 0 and 10")
+		return
+	}
+
+	// build the job
+	now := time.Now()
+
+	job := &job.Job{
+		ID:         strconv.FormatInt(h.idGenerator.NextID(), 10),
+		Type:       req.Type,
+		Payload:    req.Payload,
+		Priority:   req.Priority,
+		Status:     job.StatusPending,
+		MaxRetries: req.MaxRetries,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}
+
+	if req.Delay > 0 {
+		job.RunAfter = now.Add(time.Duration(req.Delay) * time.Second)
+	}
+
+	err = h.store.Save(r.Context(), job)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "failed to save job")
+		return
+	}
+
+	err = q.Enqueue(r.Context(), job)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "enqueue failed")
+		return
+	}
+
+	WriteJSON(w, http.StatusCreated, job)
+}
+
 func (h *Handler) GetJob(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
