@@ -19,6 +19,7 @@ I Streamed the development of GoTaskQ live on YouTube, and the full playlist is 
    - Redis queue uses a sorted set plus a payload hash and publishes notifications.
 4. Execution
    - Worker pool dequeues ready jobs, marks `RUNNING`, executes the handler, then marks `DONE` or `FAILED`.
+   - Planned: when multiple queues are registered, workers will use a round-robin snapshot to choose which queue to poll first.
 5. Retry and DLQ
    - Failed jobs are re-queued with exponential backoff until retries are exhausted.
    - Exhausted jobs are marked `DEAD` and stored in Redis DLQ (when enabled).
@@ -110,6 +111,20 @@ Prometheus metrics are exposed at `/metrics`. Key series:
 - `gotaskq_active_workers`
 - `gotaskq_jobs_retried_total`
 - `gotaskq_jobs_dead_total`
+
+## Known Issues and Proposed Fixes (as of 2026-05-06)
+1. Dynamic queue processing
+   - Issue: Queues created via `POST /queue/{name}` are registered in the manager but not added to the worker pool, so non-default queues may not be processed.
+   - Proposed fix: Inject a queue registrar into API handlers and call `AddQueue()` after successful registration.
+2. Retry engine queue binding
+   - Issue: `RetryEngine` stores a single queue, so retries from non-default queues may re-enqueue to the wrong queue.
+   - Proposed fix: Pass the current queue into `HandleFailure()` and avoid storing a queue in the engine.
+3. Worker pool wiring
+   - Issue: `cmd/server` wiring still assumes a single-queue pool and does not register the default queue via the pool API.
+   - Proposed fix: Update construction so the default queue is added through `AddQueue()`.
+4. Completed-job retention
+   - Issue: Jobs are deleted from the store immediately after success, which makes post-completion queries hard.
+   - Proposed fix: Add a short retention window (e.g., `COMPLETE_JOB_TTL`) before cleanup.
 
 ## Benchmark
 Command:
