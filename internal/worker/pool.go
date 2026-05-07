@@ -10,9 +10,9 @@ import (
 
 	"github.com/Aryan9inja/gotaskq/internal/handler"
 	"github.com/Aryan9inja/gotaskq/internal/job"
+	"github.com/Aryan9inja/gotaskq/internal/metrics"
 	"github.com/Aryan9inja/gotaskq/internal/queue"
 	"github.com/Aryan9inja/gotaskq/internal/retry"
-	"github.com/Aryan9inja/gotaskq/internal/metrics"
 )
 
 type HandlerGet interface {
@@ -20,19 +20,32 @@ type HandlerGet interface {
 }
 
 type Pool struct {
-	queue    queue.Queue
-	store    job.Store
-	registry HandlerGet
-	retry    retry.Engine
-	// dlq
-	// metrics
+	store      job.Store
+	registry   HandlerGet
+	retry      retry.Engine
 	numWorkers int
 	wg         sync.WaitGroup
 	ctx        context.Context
 	cancel     context.CancelFunc
+
+	mu sync.Mutex
+
+	// queues + cursor implements round robin polling across registered queues
+	queues     []queue.Queue
+	queueNames map[string]struct{}
+	cursor     int
+
+	// tells us if pool of worker has been initiated
+	started bool
+
+	// wakeCh makes workers to stop waiting when new work or notifications come
+	wakeCh chan struct{}
+
+	// functions to cancel pub/sub per queue
+	unsubscribe []func()
 }
 
-func NewWorkerPool(parentCtx context.Context, q queue.Queue, st job.Store, registry HandlerGet, rtry retry.Engine, numWorkers int) *Pool {
+func NewWorkerPool(parentCtx context.Context, st job.Store, registry HandlerGet, rtry retry.Engine, numWorkers int) *Pool {
 	if numWorkers <= 0 {
 		numWorkers = 1
 	}
@@ -44,26 +57,143 @@ func NewWorkerPool(parentCtx context.Context, q queue.Queue, st job.Store, regis
 	ctx, cancel := context.WithCancel(parentCtx)
 
 	return &Pool{
-		queue:      q,
 		store:      st,
 		registry:   registry,
 		retry:      rtry,
 		numWorkers: numWorkers,
 		ctx:        ctx,
 		cancel:     cancel,
+		queues:     make([]queue.Queue, 0),
+		queueNames: make(map[string]struct{}),
+		wakeCh:     make(chan struct{}, 1),
+	}
+}
+
+func (pool *Pool) AddQueues(q queue.Queue) {
+	if q == nil {
+		log.Print("queue to add is nil")
+		return
+	}
+
+	pool.mu.Lock()
+	if _, exists := pool.queueNames[q.Name()]; exists {
+		log.Print("queue already exist in worker pool")
+		pool.mu.Unlock()
+		return
+	}
+
+	pool.queues = append(pool.queues, q)
+	pool.queueNames[q.Name()] = struct{}{}
+	pool.mu.Unlock()
+
+	if notifier, ok := q.(queue.Notifications); ok {
+		ch, cancel, err := notifier.SubscribeNotifications(pool.ctx)
+		if err != nil {
+			log.Printf("queue %s: queue notification subscribe failed: %v", q.Name(), err)
+		} else {
+			pool.mu.Lock()
+			pool.unsubscribe = append(pool.unsubscribe, cancel)
+			pool.mu.Unlock()
+
+			pool.wg.Add(1)
+			pool.forwardNotifications(ch)
+		}
+	}
+
+	pool.wakeWorkers()
+}
+
+func (pool *Pool) wakeWorkers() {
+	select {
+	case pool.wakeCh <- struct{}{}:
+	default:
+	}
+}
+
+func (pool *Pool) forwardNotifications(ch <-chan struct{}) {
+	defer pool.wg.Done()
+
+	for {
+		select {
+		case <-pool.ctx.Done():
+			return
+		case _, ok := <-ch:
+			if !ok {
+				return
+			}
+			pool.wakeWorkers()
+		}
 	}
 }
 
 func (pool *Pool) Start() {
+	pool.mu.Lock()
+	if pool.started {
+		pool.mu.Unlock()
+		return
+	}
+	pool.started = true
+	pool.mu.Unlock()
+
 	for i := 0; i < pool.numWorkers; i++ {
 		pool.wg.Add(1)
 		go pool.runWorker(i)
 	}
+
+	pool.wakeWorkers()
 }
 
 func (pool *Pool) Stop() {
 	pool.cancel()
+
+	pool.mu.Lock()
+	for _, unsubscribe := range pool.unsubscribe {
+		unsubscribe()
+	}
+	pool.mu.Unlock()
+
 	pool.wg.Wait()
+}
+
+func (pool *Pool) queueSnapshot() []queue.Queue {
+	pool.mu.Lock()
+	defer pool.mu.Unlock()
+
+	count := len(pool.queues)
+	if count == 0 {
+		return nil
+	}
+
+	start := pool.cursor % count
+	pool.cursor = (pool.cursor + 1) % count
+
+	queues := make([]queue.Queue, 0, count)
+	for offset := range count {
+		queues = append(queues, pool.queues[(start+offset)%count])
+	}
+
+	return queues
+}
+
+func (pool *Pool) dequeueReadyJobs() (queue.Queue, *job.Job, bool) {
+	for _, q := range pool.queueSnapshot() {
+		deqeueudJob, err := q.Dequeue(pool.ctx)
+		if err == nil {
+			return q, deqeueudJob, true
+		}
+	}
+	return nil, nil, false
+}
+
+func (pool *Pool) waitForWork() {
+	timer := time.NewTimer(100 * time.Millisecond)
+	defer timer.Stop()
+
+	select {
+	case <-pool.ctx.Done():
+	case <-pool.wakeCh:
+	case <-timer.C:
+	}
 }
 
 func (pool *Pool) runWorker(id int) {
@@ -71,65 +201,40 @@ func (pool *Pool) runWorker(id int) {
 	metrics.IncActiveWorkers()
 	defer metrics.DecActiveWorkers()
 
-	var notifyCh <-chan struct{}
-	unsubscribe := func ()  {}
-
-	if notifier, ok := pool.queue.(queue.Notifications); ok{
-		ch, cancel, err := notifier.SubscribeNotifications(pool.ctx)
-		if err != nil {
-			log.Printf("worker %d: queue notification subscribe failed: %v", id, err)
-		}else{
-			notifyCh = ch
-			unsubscribe = cancel
-		}
-	}
-
-	defer unsubscribe()
-
 	for {
 		select {
 		case <-pool.ctx.Done():
 			return
 
 		default:
-			dequeuedJob, err := pool.queue.Dequeue(pool.ctx)
-			if err != nil {
-				if notifyCh!=nil{
-					select {
-					case <-pool.ctx.Done():
-						return
-					case <-notifyCh:
-					case <-time.After(100*time.Millisecond):
-					}
-
-					continue
-				}
-
-				time.Sleep(100 * time.Millisecond)
+			q, dequeuedJob, ok := pool.dequeueReadyJobs()
+			if !ok {
+				pool.waitForWork()
 				continue
 			}
 
-			if err := pool.processJob(dequeuedJob); err != nil {
-				log.Printf("worker %d: failed to process job %s: %v", id, dequeuedJob.ID, err)
+			if err := pool.processJob(q, dequeuedJob); err != nil {
+				log.Printf("worker %d for queue %s: failed to process job %s: %v", id, q.Name(), dequeuedJob.ID, err)
 			}
 		}
 	}
 }
 
-func (pool *Pool) processJob(j *job.Job) (err error) {
+func (pool *Pool) processJob(q queue.Queue, j *job.Job) (err error) {
 	queueName := "unknown"
-	if pool.queue != nil{
-		queueName = pool.queue.Name()
+	if q != nil {
+		queueName = q.Name()
 	}
 
 	jobType := "unknown"
-	if j != nil{
+	if j != nil {
 		jobType = j.Type
 	}
 
 	start := time.Now()
 	status := "failed"
-	defer func(){
+
+	defer func() {
 		metrics.ObserveJobDuration(queueName, jobType, time.Since(start))
 		metrics.IncJobsProcessed(queueName, jobType, status)
 	}()
@@ -199,6 +304,11 @@ func (pool *Pool) processJob(j *job.Job) (err error) {
 	}
 	j.Status = job.StatusDone
 	status = "done"
+
+	// 5. Delete job after completion
+	if delErr := pool.store.Delete(pool.ctx, j.ID); delErr!=nil{
+		log.Printf("failed to delete job %s from store: %v", j.ID, delErr)
+	}
 
 	return nil
 }
