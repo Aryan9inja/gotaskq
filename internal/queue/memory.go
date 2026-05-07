@@ -112,7 +112,7 @@ func (memQueue *MemoryQueue) Dequeue(ctx context.Context) (j *job.Job, error err
 
 	j = heap.Pop(&memQueue.jobH).(*job.Job)
 
-	_ = memQueue.Len()
+	_ = memQueue.jobH.Len()
 
 	return j, nil
 }
