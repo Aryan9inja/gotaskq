@@ -18,27 +18,29 @@ type Server struct {
 	idGenerator  *snowflake.Snowflake
 	dlqStore     dlq.DlqInterface
 	queueFactory queue.Factory
+	registrar    queue.Registrar
 }
 
-func NewServer(st job.Store, qm *queue.QueueManager, idGen *snowflake.Snowflake, dlqStore dlq.DlqInterface, factory queue.Factory) *Server {
+func NewServer(st job.Store, qm *queue.QueueManager, idGen *snowflake.Snowflake, dlqStore dlq.DlqInterface, factory queue.Factory, registrar queue.Registrar) *Server {
 	return &Server{
 		store:        st,
 		queueManager: qm,
 		idGenerator:  idGen,
 		dlqStore:     dlqStore,
 		queueFactory: factory,
+		registrar:    registrar,
 	}
 }
 
 func (s *Server) Start(addr string) error {
 	r := chi.NewRouter()
-	h := handlers.New(s.store, s.queueManager, s.idGenerator, s.dlqStore, s.queueFactory)
+	h := handlers.New(s.store, s.queueManager, s.idGenerator, s.dlqStore, s.queueFactory, s.registrar)
 
 	// Route definition here
 	r.Handle("/metrics", promhttp.Handler())
 	r.Post("/jobs", h.CreateJob)
 	r.Get("/jobs/{id}", h.GetJob)
-	r.Post("/{queue}/jobs",h.CreateJobOnQueue)
+	r.Post("/{queue}/jobs", h.CreateJobOnQueue)
 	r.Get("/dlq", h.ListDeadJobs)
 	r.Post("/dlq/{id}/replay", h.ReplayDeadJob)
 	r.Delete("/dlq/{id}", h.DeleteDeadJob)
