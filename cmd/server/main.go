@@ -75,7 +75,7 @@ func main() {
 			}
 		}()
 
-		redisStore, err := job.NewRedisStore(redisClient)
+		redisStore, err := job.NewRedisStore(redisClient, time.Duration(cfg.CompleteJobTTL)*time.Minute)
 		if err != nil {
 			log.Fatalf("failed to create redis job store: %v", err)
 		}
@@ -101,7 +101,7 @@ func main() {
 		queueFactory = redisFactory
 	} else {
 		log.Println("Using in memory backend")
-		jobStore = job.NewMemoryStore()
+		jobStore = job.NewMemoryStore(time.Duration(cfg.CompleteJobTTL)*time.Minute)
 		queueFactory = queue.NewMemoryFactory()
 		mainQueue = queue.NewMemoryQueue("default")
 		dlqStore = nil
@@ -124,22 +124,23 @@ func main() {
 	handlerRegistry.Register("logger", logHandler{})
 
 	// 7. Create a retry engine
-	retryEngine := retry.NewRetryEngine(jobStore, mainQueue, time.Duration(cfg.MaxDelay), dlqStore)
+	retryEngine := retry.NewRetryEngine(jobStore, time.Duration(cfg.MaxDelay), dlqStore)
 
 	// 8. Create a worker pool
 	workerPool := worker.NewWorkerPool(
 		context.Background(),
-		mainQueue, jobStore,
+		jobStore,
 		handlerRegistry,
 		retryEngine,
 		cfg.NumWorkers,
 	)
 
 	// 9. Start worker pool
+	workerPool.AddQueue(mainQueue)
 	workerPool.Start()
 
 	// 10. Create http server
-	apiServer := api.NewServer(jobStore, queueManager, snowflakeGen, dlqStore, queueFactory)
+	apiServer := api.NewServer(jobStore, queueManager, snowflakeGen, dlqStore, queueFactory, workerPool)
 
 	// 11. Spawn server in a goroutine
 	go func() {
