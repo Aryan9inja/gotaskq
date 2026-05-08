@@ -34,24 +34,36 @@ var (
 type inMemoryStore struct {
 	mu   sync.RWMutex
 	jobs map[string]*Job
+	ttl  time.Duration
 }
 
 type redisStore struct {
 	client redis.UniversalClient
+	ttl    time.Duration
 }
 
-func NewMemoryStore() *inMemoryStore {
+func NewMemoryStore(ttl ...time.Duration) *inMemoryStore {
+	completeJobTTL := time.Duration(0)
+
+	if len(ttl) > 0 {
+		completeJobTTL = ttl[0]
+	}
+
 	return &inMemoryStore{
 		jobs: make(map[string]*Job),
+		ttl:  completeJobTTL,
 	}
 }
 
-func NewRedisStore(redisClient redis.UniversalClient) (*redisStore, error) {
+func NewRedisStore(redisClient redis.UniversalClient, ttl time.Duration) (*redisStore, error) {
 	if redisClient == nil {
 		return nil, ErrRedisClientNil
 	}
 
-	return &redisStore{client: redisClient}, nil
+	return &redisStore{
+		client: redisClient,
+		ttl:    ttl,
+	}, nil
 }
 
 // ========================
@@ -173,6 +185,19 @@ func (store *inMemoryStore) Delete(ctx context.Context, id string) error {
 
 	store.mu.Lock()
 	defer store.mu.Unlock()
+
+	if store.ttl > 0 {
+		curr := store.jobs[id]
+		time.AfterFunc(store.ttl, func() {
+			store.mu.Lock()
+			defer store.mu.Unlock()
+			if store.jobs[id] != curr {
+				return
+			}
+			delete(store.jobs, id)
+		})
+		return nil
+	}
 
 	delete(store.jobs, id)
 
@@ -445,8 +470,8 @@ func (store *redisStore) Delete(ctx context.Context, id string) error {
 		return ErrEmptyJobID
 	}
 
-	if _, err := store.client.Del(ctx, redisJobKey(id)).Result(); err != nil {
-		return fmt.Errorf("delete job %s from redis failed: %w", id, err)
+	if _, err := store.client.Expire(ctx, redisJobKey(id), store.ttl).Result(); err != nil {
+		return fmt.Errorf("delete (expire) job %s from redis failed: %w", id, err)
 	}
 
 	return nil
