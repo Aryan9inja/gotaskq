@@ -69,7 +69,7 @@ func NewWorkerPool(parentCtx context.Context, st job.Store, registry HandlerGet,
 	}
 }
 
-func (pool *Pool) AddQueues(q queue.Queue) {
+func (pool *Pool) AddQueue(q queue.Queue) {
 	if q == nil {
 		log.Print("queue to add is nil")
 		return
@@ -96,7 +96,7 @@ func (pool *Pool) AddQueues(q queue.Queue) {
 			pool.mu.Unlock()
 
 			pool.wg.Add(1)
-			pool.forwardNotifications(ch)
+			go pool.forwardNotifications(ch)
 		}
 	}
 
@@ -259,7 +259,7 @@ func (pool *Pool) processJob(q queue.Queue, j *job.Job) (err error) {
 				return
 			}
 			j.Status = job.StatusFailed
-			pool.retry.HandleFailure(pool.ctx, j)
+			pool.retry.HandleFailure(pool.ctx, q, j)
 
 			err = panicErr
 		}
@@ -276,7 +276,7 @@ func (pool *Pool) processJob(q queue.Queue, j *job.Job) (err error) {
 			)
 		}
 		j.Status = job.StatusFailed
-		pool.retry.HandleFailure(pool.ctx, j)
+		pool.retry.HandleFailure(pool.ctx, q, j)
 
 		return fmt.Errorf("no handler registered for job type %s", j.Type)
 	}
@@ -292,7 +292,7 @@ func (pool *Pool) processJob(q queue.Queue, j *job.Job) (err error) {
 			)
 		}
 		j.Status = job.StatusFailed
-		pool.retry.HandleFailure(pool.ctx, j)
+		pool.retry.HandleFailure(pool.ctx, q, j)
 
 		return fmt.Errorf("handler failed for job %s: %w", j.ID, err)
 	}
@@ -306,7 +306,7 @@ func (pool *Pool) processJob(q queue.Queue, j *job.Job) (err error) {
 	status = "done"
 
 	// 5. Delete job after completion
-	if delErr := pool.store.Delete(pool.ctx, j.ID); delErr!=nil{
+	if delErr := pool.store.Delete(pool.ctx, j.ID); delErr != nil {
 		log.Printf("failed to delete job %s from store: %v", j.ID, delErr)
 	}
 
