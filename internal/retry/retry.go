@@ -8,27 +8,25 @@ import (
 
 	"github.com/Aryan9inja/gotaskq/internal/dlq"
 	"github.com/Aryan9inja/gotaskq/internal/job"
-	"github.com/Aryan9inja/gotaskq/internal/queue"
 	"github.com/Aryan9inja/gotaskq/internal/metrics"
+	"github.com/Aryan9inja/gotaskq/internal/queue"
 )
 
 type Engine interface {
-	HandleFailure(ctx context.Context, j *job.Job)
+	HandleFailure(ctx context.Context, q queue.Queue, j *job.Job)
 }
 
 type RetryEngine struct {
 	store    job.Store
-	queue    queue.Queue
 	MaxDelay time.Duration
 	dlq      dlq.DlqInterface
 }
 
-func NewRetryEngine(st job.Store, q queue.Queue, maxDelay time.Duration, dlqStore dlq.DlqInterface) *RetryEngine {
+func NewRetryEngine(st job.Store, maxDelay time.Duration, dlqStore dlq.DlqInterface) *RetryEngine {
 	return &RetryEngine{
 		store:    st,
-		queue:    q,
 		MaxDelay: maxDelay,
-		dlq: dlqStore,
+		dlq:      dlqStore,
 	}
 }
 
@@ -50,10 +48,10 @@ func (engine *RetryEngine) NextDelay(j *job.Job) time.Duration {
 	return delay + jitter
 }
 
-func (engine *RetryEngine) HandleFailure(ctx context.Context, j *job.Job) {
+func (engine *RetryEngine) HandleFailure(ctx context.Context, q queue.Queue, j *job.Job) {
 	queueName := "unknown"
-	if engine.queue != nil{
-		queueName = engine.queue.Name()
+	if q != nil {
+		queueName = q.Name()
 	}
 
 	select {
@@ -81,10 +79,14 @@ func (engine *RetryEngine) HandleFailure(ctx context.Context, j *job.Job) {
 			j.Status = job.StatusPending
 		}
 
-		err = engine.queue.Enqueue(ctx, j)
-		if err != nil {
-			j.Error = "Not able to enqueue the job"
-			fmt.Printf("Handle failure: enqueue job : %v", err)
+		if q != nil {
+			err = q.Enqueue(ctx, j)
+			if err != nil {
+				j.Error = "Not able to enqueue the job"
+				fmt.Printf("Handle failure: enqueue job : %v", err)
+			}
+		} else {
+			fmt.Printf("Handle failure: queue is nil, cannot enqueue job %s", j.ID)
 		}
 
 		return
@@ -110,6 +112,8 @@ func (engine *RetryEngine) HandleFailure(ctx context.Context, j *job.Job) {
 		fmt.Printf("Handle failure: dlq is nil, cannot persist dead job %s", j.ID)
 		return
 	}
+
+	metrics.IncJobsDead(q.Name(), j.Type)
 
 	err = engine.dlq.Save(ctx, j)
 	if err != nil {
