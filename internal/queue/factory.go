@@ -6,6 +6,10 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+type Registrar interface {
+	AddQueue(q Queue)
+}
+
 type Factory interface {
 	New(name string) (Queue, error)
 }
