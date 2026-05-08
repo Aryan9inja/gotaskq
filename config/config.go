@@ -13,6 +13,7 @@ type Config struct {
 	NumWorkers int
 	UseRedis   bool
 	RedisUrl   string
+	CompleteJobTTL int
 }
 
 func envToInt(v string, defaultValue int) int {
@@ -41,5 +42,6 @@ func LoadConfig() *Config {
 		NumWorkers: envToInt(os.Getenv("NUM_WORKERS"), 10),
 		UseRedis: os.Getenv("USE_REDIS") == "true",
 		RedisUrl: os.Getenv("REDIS_URL"),
+		CompleteJobTTL: envToInt(os.Getenv("COMPLETE_JOB_TTL"),5), // minutes will be converted in main
 	}
 }
