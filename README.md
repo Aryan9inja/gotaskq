@@ -18,8 +18,9 @@ I Streamed the development of GoTaskQ live on YouTube, and the full playlist is 
    - Memory queue uses a heap ordered by `run_after`, `priority`, `created_at`, then `id`.
    - Redis queue uses a sorted set plus a payload hash and publishes notifications.
 4. Execution
-   - Worker pool dequeues ready jobs, marks `RUNNING`, executes the handler, then marks `DONE` or `FAILED`.
-   - Planned: when multiple queues are registered, workers will use a round-robin snapshot to choose which queue to poll first.
+   - Worker pool starts `NUM_WORKERS` total goroutines for the process.
+   - Workers select across registered queues in round-robin order and process the first ready job they find.
+   - Workers mark jobs `RUNNING`, execute the handler, then mark `DONE` or `FAILED`.
 5. Retry and DLQ
    - Failed jobs are re-queued with exponential backoff until retries are exhausted.
    - Exhausted jobs are marked `DEAD` and stored in Redis DLQ (when enabled).
@@ -38,6 +39,15 @@ I Streamed the development of GoTaskQ live on YouTube, and the full playlist is 
 - `internal/dlq`: Redis-backed dead-letter store.
 - `internal/metrics`: Prometheus metrics registration and helpers.
 - `pkg/snowflake`: unique, time-ordered IDs.
+
+## Worker Model
+GoTaskQ uses a global worker pool with a queue selector. The default queue is registered at startup, and newly created queues are added to the selector only after queue registration succeeds.
+
+`NUM_WORKERS` is the total process concurrency, not a per-queue value. For example, `NUM_WORKERS=10` creates 10 worker goroutines whether the process has one queue or five queues.
+
+Each worker snapshots the current queue list, rotates the starting queue, and tries to dequeue a ready job. This keeps concurrency bounded while allowing dynamic queues. Retry handling still re-enqueues failed jobs onto the same queue that originally ran them.
+
+The current selector is round-robin. Future queue policies can add weighted priority or strict priority without changing the global worker count.
 
 ## Setup
 ### Prerequisites
@@ -76,10 +86,11 @@ docker run --rm -p 6379:6379 redis:7
 
 ## Configuration
 - `PORT` (default: `8000`)
-- `NUM_WORKERS` (default: `10`)
+- `NUM_WORKERS` (default: `10`) total worker goroutines for this process
 - `MAX_DELAY` (default: `5000`) caps retry backoff
 - `MAX_RETRIES` (reserved; per-job `max_retries` is used today)
 - `BASE_DELAY` (reserved; not wired yet)
+- `COMPLETE_JOB_TTL` (default: `5m`) keeps completed jobs queryable before cleanup
 - `USE_REDIS` (`true` enables Redis backend)
 - `REDIS_URL` (required when `USE_REDIS=true`)
 
@@ -100,6 +111,8 @@ docker run --rm -p 6379:6379 redis:7
 - `GET /dlq` (Redis only)
 - `POST /dlq/{id}/replay` (Redis only)
 - `DELETE /dlq/{id}` (Redis only)
+- `POST /queue/{name}` creates a queue and adds it to the worker selector after registration succeeds
+- `GET /queue` lists registered queue names
 - `GET /metrics` (Prometheus)
 
 ## Metrics
@@ -112,57 +125,51 @@ Prometheus metrics are exposed at `/metrics`. Key series:
 - `gotaskq_jobs_retried_total`
 - `gotaskq_jobs_dead_total`
 
-## Known Issues and Proposed Fixes (as of 2026-05-06)
-1. Dynamic queue processing
-   - Issue: Queues created via `POST /queue/{name}` are registered in the manager but not added to the worker pool, so non-default queues may not be processed.
-   - Proposed fix: Inject a queue registrar into API handlers and call `AddQueue()` after successful registration.
-2. Retry engine queue binding
-   - Issue: `RetryEngine` stores a single queue, so retries from non-default queues may re-enqueue to the wrong queue.
-   - Proposed fix: Pass the current queue into `HandleFailure()` and avoid storing a queue in the engine.
-3. Worker pool wiring
-   - Issue: `cmd/server` wiring still assumes a single-queue pool and does not register the default queue via the pool API.
-   - Proposed fix: Update construction so the default queue is added through `AddQueue()`.
-4. Completed-job retention
-   - Issue: Jobs are deleted from the store immediately after success, which makes post-completion queries hard.
-   - Proposed fix: Add a short retention window (e.g., `COMPLETE_JOB_TTL`) before cleanup.
-
 ## Benchmark
+**System Configuration:**
+- **OS:** Linux x86_64
+- **CPU:** AMD Ryzen 5 5600H with Radeon Graphics (6 Cores / 12 Threads)
+- **RAM:** 16 GB
+
 Command:
 ```
-hey -n 100000 -c 500 -m POST \
-  -H "Content-Type: application/json" \
-  -d '{"type":"logger","payload":{"msg":"stress"},"priority":5}' \
-  http://localhost:8000/jobs
+./scripts/stress_multi_queue.sh
 ```
+This script creates 3 queues and sends 50,000 jobs to each queue concurrently using `hey` (150,000 total jobs).
 
-Summary:
-- Total: 11.4043 secs
-- Slowest: 0.1063 secs
-- Fastest: 0.0169 secs
-- Average: 0.0569 secs
-- Requests/sec: 8768.6479
-- Total data: 29766621 bytes
-- Size/request: 297 bytes
-
-Latency distribution:
-- 10% in 0.0532 secs
-- 25% in 0.0543 secs
-- 50% in 0.0558 secs
-- 75% in 0.0578 secs
-- 90% in 0.0607 secs
-- 95% in 0.0670 secs
-- 99% in 0.0766 secs
+### In-Memory Backend (Multi-Queue)
+Summary (per queue):
+- Total: ~1.95 secs
+- Average Latency: ~0.007 secs
+- Requests/sec: ~25,600 (Total ~76,800 req/sec across 3 queues)
 
 Status codes:
-- 201: 100000 responses
+- 201: 50,000 responses per queue
 
-Metrics snapshot:
-- `gotaskq_jobs_enqueued_total{queue="default",type="logger"}`: 100000
-- `gotaskq_jobs_processed_total{queue="default",status="done",type="logger"}`: 100000
-- `gotaskq_active_workers`: 100
+Metrics snapshot (after processing delay):
+- `gotaskq_jobs_enqueued_total`: 50000 per queue
+- `gotaskq_jobs_processed_total{status="done"}`: 50000 per queue
+
+### Redis Backend (Multi-Queue)
+Summary (per queue):
+- Total: ~8.80 secs
+- Average Latency: ~0.035 secs
+- Requests/sec: ~5,680 (Total ~17,040 req/sec across 3 queues)
+
+Status codes:
+- 201: 50,000 responses per queue
+
+Metrics snapshot (after processing delay):
+- `gotaskq_jobs_enqueued_total`: 50000 per queue
+- `gotaskq_jobs_processed_total{status="done"}`: 50000 per queue
+
+### Performance Note
+The **In-Memory** queue is significantly faster because operations are simple, thread-safe (mutex-protected) map and heap manipulations happening directly in the application's RAM without any I/O blocking.
+
+The **Redis** queue is relatively slower (though still highly performant) due to:
+1. **Network/Socket Overhead:** Every job enqueue and status update requires serializing data, sending it over a local socket, and waiting for the Redis response.
+2. **Durability:** Redis manages persistence and executes complex data structure operations (Hashes, Sorted Sets) synchronously inside its single-threaded event loop.
+3. **Round-Trips:** While the worker pool handles concurrent connections, each worker still pays the latency cost of multiple Redis commands (polling, popping, and updating job hashes).
 
 ## Future Scope
-1. Introduce more HTTP routes.
-2. Allow users to add custom handlers.
-3. Add a metrics UI (Grafana or Prometheus UI).
-4. Make metrics code production-ready and allow a user-chosen registry.
+Convert this into a library with a clean API for embedding in other applications. The current server implementation will be refactored to use the library, and the library will be designed to allow users to build custom servers or integrate directly into their codebase without HTTP. The library will expose a clear API for job creation, queue management, and worker execution, while abstracting away the underlying storage and scheduling mechanics. This will enable greater flexibility and adoption in various Go applications.
