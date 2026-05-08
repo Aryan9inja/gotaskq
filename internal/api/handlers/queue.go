@@ -16,6 +16,7 @@ func (h *Handler) CreateNewQueue(w http.ResponseWriter, r *http.Request) {
 	queue, err := h.queueFactory.New(queueName)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, fmt.Sprintf("failed to create new queue with name: %s", queueName))
+		return
 	}
 
 	err = h.queueManager.Register(queue)
@@ -23,6 +24,10 @@ func (h *Handler) CreateNewQueue(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusInternalServerError, fmt.Sprintf(
 			"failed to register new queue:%v", err))
 		return
+	}
+
+	if h.registrar != nil {
+		h.registrar.AddQueue(queue)
 	}
 
 	WriteJSON(w, http.StatusCreated, "Success creating new queue")
