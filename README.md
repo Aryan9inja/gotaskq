@@ -6,7 +6,8 @@ I Streamed the development of GoTaskQ live on YouTube, and the full playlist is 
 
 ## Architecture Overview
 ### HLD
-<img width="1314" height="792" alt="HLD_gotaskq" src="https://github.com/user-attachments/assets/65e73fd4-00a6-48e5-8b6f-15a730f9504b" />
+<img width="1535" height="740" alt="HLD v1.1" src="https://github.com/user-attachments/assets/8756c984-ee9e-40ac-8cd7-df116027888d" />
+
 
 ### Architecture decisions
 1. API ingress
