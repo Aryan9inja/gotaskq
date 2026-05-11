@@ -1,4 +1,5 @@
-# GoTaskQ
+# GoTaskQ [![CI](https://github.com/Aryan9inja/gotaskq/actions/workflows/ci.yml/badge.svg)](https://github.com/Aryan9inja/gotaskq/actions/workflows/ci.yml)
+
 GoTaskQ is a Go-based job queue with HTTP ingestion, worker pool execution, retries, DLQ handling, and Prometheus metrics. It runs in-memory by default and can switch to Redis for durability.
 
 I Streamed the development of GoTaskQ live on YouTube, and the full playlist is available for viewing. The project is structured to allow incremental development and iterative releases, with a clear roadmap for future enhancements.
