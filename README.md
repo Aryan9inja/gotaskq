@@ -3,7 +3,7 @@
 GoTaskQ is a Go-based job queue with HTTP ingestion, worker pool execution, retries, DLQ handling, and Prometheus metrics. It runs in-memory by default and can switch to Redis for durability.
 
 I Streamed the development of GoTaskQ live on YouTube, and the full playlist is available for viewing. The project is structured to allow incremental development and iterative releases, with a clear roadmap for future enhancements.
-### Stream playlist: https://youtube.com/playlist?list=PLeNxLCYqfeHTxEQ33yuftg5F-SzKoZKPh&si=GhwWzBpnHBsYaaJ3
+#### [YouTube Stream playlist Link](https://youtube.com/playlist?list=PLeNxLCYqfeHTxEQ33yuftg5F-SzKoZKPh&si=GhwWzBpnHBsYaaJ3)
 
 ## Architecture Overview
 ### HLD
