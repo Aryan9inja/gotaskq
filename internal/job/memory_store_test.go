@@ -7,6 +7,54 @@ import (
 	"time"
 )
 
+func TestMemoryStore(t* testing.T){
+	ctx := context.Background()
+
+	t.Run("Save and Get", func(t *testing.T) {
+		store := NewMemoryStore()
+		j := &Job{ID: "j1", Type: "test", Status: StatusPending}
+
+		if err := store.Save(ctx, j); err!=nil{
+			t.Fatalf("Save failed: %v", err)
+		}
+
+		got, err := store.Get(ctx, j.ID)
+		if err != nil {
+			t.Fatalf("Get failed: %v", err)
+		}
+
+		if got.ID != j.ID{
+			t.Fatalf("Expected ID: %s, got %s",j.ID, got.ID)
+		}
+	})
+
+	t.Run("Update Status Valid", func(t *testing.T) {
+		store := NewMemoryStore()
+		j := &Job{ID: "j2", Type: "test", Status: StatusPending}
+		store.Save(ctx, j)
+
+		if err := store.UpdateStatus(ctx, "j2", StatusRunning); err!=nil{
+			t.Fatalf("Update status failed: %v", err)
+		}
+
+		got, _ := store.Get(ctx, j.ID)
+		if got.Status != StatusRunning{
+			t.Fatalf("Expected status %s, got %s", StatusRunning, got.Status)
+		}
+	})
+
+	t.Run("Update Status Invalid", func(t *testing.T) {
+		store := NewMemoryStore()
+		j := &Job{ID: "j2", Type: "test", Status: StatusPending}
+		store.Save(ctx, j)
+
+		err := store.UpdateStatus(ctx, "j2", StatusDone)
+		if err == nil {
+			t.Error("Expected error for invalid transition")
+		}
+	})
+}
+
 func TestMemoryStoreDelete(t *testing.T) {
 	t.Run("retains job until ttl", func(t *testing.T) {
 		ctx := context.Background()
