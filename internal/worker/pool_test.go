@@ -188,4 +188,128 @@ func TestWorkerPoolProcessing(t *testing.T) {
 			t.Errorf("Missing status transition. Got %v", statusChange)
 		}
 	})
+
+	t.Run("Handle error in handler", func(t *testing.T) {
+		retryCalled := false
+		var wg sync.WaitGroup
+		wg.Add(1)
+
+		retry := &MockRetryEngine{
+			handleFailureFunc: func(ctx context.Context, q queue.Queue, j *job.Job) {
+				retryCalled = true
+				wg.Done()
+			},
+		}
+
+		mockStore := &MockStore{
+			updateFunc: func(ctx context.Context, id string, status job.Status) error {
+				return nil
+			},
+		}
+
+		mockHandler := &MockHandler{
+			handleFunc: func(ctx context.Context, job *job.Job) error {
+				return errors.New("failed")
+			},
+		}
+
+		mockRegistry := &MockRegistry{
+			handlers: map[string]handler.Handler{"test":mockHandler},
+		}
+
+		pool := NewWorkerPool(ctx, mockStore, mockRegistry, retry, 1)
+		q := &ManualQueue{
+			name: "test-queue",
+			jobs: make(chan *job.Job, 1),
+		}
+		pool.AddQueue(q)
+		pool.Start()
+		defer pool.Stop()
+
+		j := &job.Job{ID: "job-2", Type: "test"}
+		q.jobs <- j
+
+		wg.Wait()
+
+		if !retryCalled{
+			t.Error("Retry engine was not called after handler failure")
+		}
+	})
+
+	t.Run("Handle panic in handler", func(t *testing.T) {
+		retryCalled := false
+		var wg sync.WaitGroup
+		wg.Add(1)
+
+		retry := &MockRetryEngine{
+			handleFailureFunc: func(ctx context.Context, q queue.Queue, j *job.Job) {
+				retryCalled = true
+				wg.Done()
+			},
+		}
+
+		mockStore := &MockStore{
+			updateFunc: func(ctx context.Context, id string, status job.Status) error {
+				return nil
+			},
+		}
+
+		mockHandler := &MockHandler{
+			handleFunc: func(ctx context.Context, job *job.Job) error {
+				panic("boom")
+			},
+		}
+
+		mockRegistry := &MockRegistry{
+			handlers: map[string]handler.Handler{"test":mockHandler},
+		}
+
+		pool := NewWorkerPool(ctx, mockStore, mockRegistry, retry, 1)
+		q := &ManualQueue{
+			name: "test-queue",
+			jobs: make(chan *job.Job, 1),
+		}
+		pool.AddQueue(q)
+		pool.Start()
+		defer pool.Stop()
+
+		j := &job.Job{ID: "job-3", Type: "test"}
+		q.jobs <- j
+
+		wg.Wait()
+
+		if !retryCalled{
+			t.Error("Retry engine was not called after handler panic")
+		}
+	})
+}
+
+func TestRoundRobinPolling(t *testing.T) {
+	pool := &Pool{
+		queues: []queue.Queue{
+			&ManualQueue{name: "q1"},
+			&ManualQueue{name: "q2"},
+			&ManualQueue{name: "q3"},
+		},
+	}
+
+	qSnap1 := pool.queueSnapshot()
+	if qSnap1[0].Name() != "q1"{
+		t.Errorf("Expected first queue q1, got %q", qSnap1[0].Name())
+	}
+
+	qSnap2 := pool.queueSnapshot()
+	if qSnap2[0].Name() != "q2"{
+		t.Errorf("Expected first queue q2, got %q", qSnap2[0].Name())
+	}
+
+	qSnap3 := pool.queueSnapshot()
+	if qSnap3[0].Name() != "q3"{
+		t.Errorf("Expected first queue q3, got %q", qSnap3[0].Name())
+	}
+
+	qSnap4 := pool.queueSnapshot()
+	if qSnap4[0].Name() != "q1"{
+		t.Errorf("Expected wrap around to q1, got %q", qSnap4[0].Name())
+	}
 }
