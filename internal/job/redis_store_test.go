@@ -57,4 +57,33 @@ func TestRedisStore(t *testing.T){
 			t.Error("Expected error for invalid transition")
 		}
 	})
+
+	t.Run("Delete", func(t *testing.T) {
+		testutils.ClearRedis(t, client)
+		store, _ := job.NewRedisStore(client, 1*time.Second)
+
+		j1 := testutils.NewTestJob("j1", 5, 0)
+		store.Save(ctx,j1)
+
+		if err := store.Delete(ctx, "j1"); err!=nil{
+			t.Fatalf("Delete failed: %v", err)
+		}
+
+		time.Sleep(1005 * time.Millisecond)
+
+		_, err := store.Get(ctx, "j1")
+		if err == nil {
+			t.Error("Expected job to be deleted/expired, but it was found")
+		}
+	})
+
+	t.Run("Not found", func(t *testing.T) {
+		testutils.ClearRedis(t, client)
+		store, _ := job.NewRedisStore(client, ttl)
+
+		_, err := store.Get(ctx, "nonexistent")
+		if err == nil {
+			t.Errorf("Expected error for non-existent job: %v", err)
+		}
+	})
 }
