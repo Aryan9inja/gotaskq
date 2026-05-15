@@ -122,8 +122,8 @@ func TestRedisQueue(t *testing.T) {
 		queue, _ := queue.NewRedisQueue("test-queue", client)
 
 		_, err := queue.Dequeue(ctx)
-		if err == nil || err.Error() != "no jobs ready" {
-			t.Errorf("Expected 'no jobs ready' error, got %v", err)
+		if err == nil || err.Error() != "queue is empty" {
+			t.Errorf("Expected 'queue is empty' error, got %v", err)
 		}
 	})
 }
