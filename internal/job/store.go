@@ -316,7 +316,7 @@ func redisHashToJob(values map[string]string) (*Job, error) {
 	}
 
 	var payload json.RawMessage
-	if rawPayload := values["payload"]; rawPayload == "" {
+	if rawPayload := values["payload"]; rawPayload != "" {
 		payload = json.RawMessage(rawPayload)
 	}
 
