@@ -18,11 +18,16 @@ func TestStatusUpdate(t *testing.T) {
 
 	t.Run("State Transitions", func(t *testing.T) {
 		testutils.ClearRedis(t, client)
-		st, _ := job.NewRedisStore(client, ttl)
+		st, err := job.NewRedisStore(client, ttl)
+		if err != nil {
+			t.Fatalf("NewRedisStore failed: %v", err)
+		}
 
 		// Initial job status is "pending"
 		j1 := testutils.NewTestJob("j1", 5, 0)
-		st.Save(ctx, j1)
+		if err := st.Save(ctx, j1); err != nil {
+			t.Fatalf("Save failed: %v", err)
+		}
 
 		// 1. Pending -> Running (Valid	Transition)
 		if err := st.UpdateStatus(ctx, j1.ID, job.StatusRunning); err != nil {
@@ -51,7 +56,9 @@ func TestStatusUpdate(t *testing.T) {
 
 		// Setting status back to "failed" for next test
 		j1.Status = job.StatusFailed
-		st.Save(ctx, j1)
+		if err := st.Save(ctx, j1); err != nil {
+			t.Fatalf("Save failed: %v", err)
+		}
 		// 6. Failed -> Pending (Valid Transition)
 		if err := st.UpdateStatus(ctx, j1.ID, job.StatusPending); err != nil {
 			t.Errorf("FAILED -> PENDING should be valid, got: %v", err)
@@ -59,7 +66,9 @@ func TestStatusUpdate(t *testing.T) {
 
 		// Setting status back to "failed" for next tests
 		j1.Status = job.StatusFailed
-		st.Save(ctx, j1)
+		if err := st.Save(ctx, j1); err != nil {
+			t.Fatalf("Save failed: %v", err)
+		}
 		// 7. Failed -> Running (Invalid Transition)
 		if err := st.UpdateStatus(ctx, j1.ID, job.StatusRunning); err == nil {
 			t.Errorf("FAILED -> RUNNING should be invalid, but no error was returned")
@@ -78,10 +87,15 @@ func TestStatusUpdate(t *testing.T) {
 
 	t.Run("Updated At being updated", func(t *testing.T) {
 		testutils.ClearRedis(t, client)
-		st, _ := job.NewRedisStore(client, ttl)
+		st, err := job.NewRedisStore(client, ttl)
+		if err != nil {
+			t.Fatalf("NewRedisStore failed: %v", err)
+		}
 		
 		j2 := testutils.NewTestJob("j2", 5, 0)
-		st.Save(ctx, j2)
+		if err := st.Save(ctx, j2); err != nil {
+			t.Fatalf("Save failed: %v", err)
+		}
 
 		// Capture initial UpdatedAt
 		initialUpdatedAt := j2.UpdatedAt
@@ -91,13 +105,16 @@ func TestStatusUpdate(t *testing.T) {
 
 		// Update status to "running"
 		if err := st.UpdateStatus(ctx, j2.ID, job.StatusRunning); err != nil {
-			t.Errorf("Failed to update status: %v", err)
+			t.Fatalf("Failed to update status: %v", err)
 		}
 
 		// Retrieve the job again to check UpdatedAt
 		updatedJob, err := st.Get(ctx, j2.ID)
 		if err != nil {
-			t.Errorf("Failed to retrieve job: %v", err)
+			t.Fatalf("Failed to retrieve job: %v", err)
+		}
+		if updatedJob == nil {
+			t.Fatalf("Get returned nil job without error")
 		}
 
 		if !updatedJob.UpdatedAt.After(initialUpdatedAt) {
