@@ -50,22 +50,34 @@ func TestRedisQueue(t *testing.T) {
 		queue, _ := queue.NewRedisQueue("test-queue", client)
 
 		now := time.Now()
+		runTime := now.Add(100 * time.Millisecond)
+
 		j1 := testutils.NewTestJob("j1", 5, 0)
-		j1.RunAfter = now
+		j1.RunAfter = runTime
 		j1.CreatedAt = now
+
 		j2 := testutils.NewTestJob("j2", 10, 0)
-		j2.RunAfter = now
+		j2.RunAfter = runTime
 		j2.CreatedAt = now
 
 		queue.Enqueue(ctx, j1)
 		queue.Enqueue(ctx, j2)
 
-		got1, _ := queue.Dequeue(ctx)
+		// Wait for jobs to be ready
+		time.Sleep(150 * time.Millisecond)
+
+		got1, err := queue.Dequeue(ctx)
+		if err != nil {
+			t.Fatalf("Dequeue 1 failed: %v", err)
+		}
 		if got1.ID != j2.ID {
 			t.Errorf("Expected job ID %s, got %s", j2.ID, got1.ID)
 		}
 
-		got2, _ := queue.Dequeue(ctx)
+		got2, err := queue.Dequeue(ctx)
+		if err != nil {
+			t.Fatalf("Dequeue 2 failed: %v", err)
+		}
 		if got2.ID != j1.ID {
 			t.Errorf("Expected job ID %s, got %s", j1.ID, got2.ID)
 		}
