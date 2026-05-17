@@ -22,5 +22,6 @@ func NewTestJob(id string, priority int, delay time.Duration) *job.Job {
 		RetryCount: 0,
 		MaxRetries: 3,
 		Status:     job.StatusPending,
+		UpdatedAt:  now,
 	}
 }
