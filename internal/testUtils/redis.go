@@ -2,7 +2,11 @@ package testutils
 
 import (
 	"context"
+	"hash/fnv"
 	"os"
+	"path/filepath"
+	"runtime"
+	"strconv"
 	"testing"
 
 	"github.com/redis/go-redis/v9"
@@ -25,6 +29,8 @@ func GetRedisClient(t *testing.T) redis.UniversalClient{
 		t.Fatalf("Failed to parse redis url: %v", err)
 	}
 
+	opts.DB = redisTestDB(t)
+
 	client := redis.NewClient(opts)
 
 	ctx := context.Background()
@@ -33,6 +39,27 @@ func GetRedisClient(t *testing.T) redis.UniversalClient{
 	}
 
 	return client
+}
+
+func redisTestDB(t* testing.T) int{
+	if raw:= os.Getenv("REDIS_TEST_DB"); raw != ""{
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 0 || value > 15{
+			t.Fatalf("Failed to parse redis test db: %v", err)
+		}
+		return value
+	}
+
+	_, file, _, ok := runtime.Caller(2)
+	if !ok{
+		return 0
+	}
+
+	dir := filepath.Dir(file)
+	hasher := fnv.New32a()
+	_, _ = hasher.Write([]byte(dir))
+	// Return a value between 1 and 15, reserving 0 for manual testing and debugging
+	return int(hasher.Sum32() % 15)	+ 1
 }
 
 func ClearRedis(t *testing.T, client redis.UniversalClient){
