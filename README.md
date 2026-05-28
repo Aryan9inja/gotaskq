@@ -2,6 +2,10 @@
 
 GoTaskQ is a Go-based job queue with HTTP ingestion, worker pool execution, retries, DLQ handling, and Prometheus metrics. It runs in-memory by default and can switch to Redis for durability.
 
+Now Gotaskq is a fully fledged library for go ecosystem. Currently it has an HTTP server implementation which can be used as a standalone service or as a reference for building custom integrations. The library is designed to be flexible and extensible, allowing users to implement their own storage backends, scheduling algorithms, and worker models as needed.
+
+`go get github.com/Aryan9inja/gotaskq/taskq` to install the library and import it in your Go projects.
+
 I Streamed the development of GoTaskQ live on YouTube, and the full playlist is available for viewing. The project is structured to allow incremental development and iterative releases, with a clear roadmap for future enhancements.
 #### [YouTube Stream playlist Link](https://youtube.com/playlist?list=PLeNxLCYqfeHTxEQ33yuftg5F-SzKoZKPh&si=GhwWzBpnHBsYaaJ3)
 
@@ -174,4 +178,4 @@ The **Redis** queue is relatively slower (though still highly performant) due to
 3. **Round-Trips:** While the worker pool handles concurrent connections, each worker still pays the latency cost of multiple Redis commands (polling, popping, and updating job hashes).
 
 ## Future Scope
-Convert this into a library with a clean API for embedding in other applications. The current server implementation will be refactored to use the library, and the library will be designed to allow users to build custom servers or integrate directly into their codebase without HTTP. The library will expose a clear API for job creation, queue management, and worker execution, while abstracting away the underlying storage and scheduling mechanics. This will enable greater flexibility and adoption in various Go applications.
+Create in memory dlq store and also enhance library implementation.
