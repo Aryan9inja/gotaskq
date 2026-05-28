@@ -46,6 +46,10 @@ type Options struct {
 	// After TTL is reached job is deleted from storage
 	// When TTL is zero or negative it will use 10 as value (10 minutes)
 	TTL int
+
+	// DefaultQueueName is the name of default queue created at server start
+	// If DefaultQueueName is empty, it will be named "default"
+	DefaultQueueName string
 }
 
 func normalizeOptions(opts Options) Options {
@@ -63,6 +67,10 @@ func normalizeOptions(opts Options) Options {
 
 	if opts.TTL <= 0 {
 		opts.TTL = 10
+	}
+
+	if opts.DefaultQueueName == ""{
+		opts.DefaultQueueName = "default"
 	}
 
 	return opts
