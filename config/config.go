@@ -7,8 +7,6 @@ import (
 
 type Config struct {
 	Port       string
-	MaxRetries int
-	BaseDelay  int
 	MaxDelay   int
 	NumWorkers int
 	UseRedis   bool
@@ -36,8 +34,6 @@ func LoadConfig() *Config {
 			return "8000"
 		}(),
 
-		MaxRetries: envToInt(os.Getenv("MAX_RETRIES"), 5),
-		BaseDelay:  envToInt(os.Getenv("BASE_DELAY"), 100),
 		MaxDelay:   envToInt(os.Getenv("MAX_DELAY"), 5000),
 		NumWorkers: envToInt(os.Getenv("NUM_WORKERS"), 10),
 		UseRedis: os.Getenv("USE_REDIS") == "true",
