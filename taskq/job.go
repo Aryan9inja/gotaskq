@@ -18,51 +18,69 @@ const (
 	StatusRunning Status = "RUNNING"
 
 	// StatusDone means the job has been processed successfully
-	StatusDone    Status = "DONE"
+	StatusDone Status = "DONE"
 
 	// StatusFailed means the job has failed to process with an error
-	StatusFailed  Status = "FAILED"
+	StatusFailed Status = "FAILED"
 
 	// StatusDead means the job has failed and exhausted all retry attempts
-	StatusDead    Status = "DEAD"
+	StatusDead Status = "DEAD"
 )
+
+// JobOptions defines the parameters for creating and enqueuing a new job
+type JobOptions struct {
+	// Type is a string that identifies the type of the job, used to route to the correct handler
+	Type string
+
+	// Payload is the JSON encoded data for the job
+	Payload json.RawMessage
+
+	// Priority determines the order of job processing, higher priority jobs are processed first (0-10)
+	Priority int
+
+	// Delay is the duration to wait before the job becomes eligible for processing
+	Delay time.Duration
+
+	// MaxRetries is the maximum number of retry attempts for the job in case of failure
+	MaxRetries int
+}
 
 type Job struct {
 	// ID is a unique identifier for the job
-	ID         string			`json:"id"`
+	ID string `json:"id"`
 
 	// Type is a string that identifies the type of the job, used to route to the correct handler
-	Type       string			`json:"type"`
+	Type string `json:"type"`
 
 	// Payload is the JSON encoded data for the job, which will be passed to the handler
-	Payload    json.RawMessage	`json:"payload"`
+	Payload json.RawMessage `json:"payload"`
 
 	// Status represents the current lifecycle state of the job
-	Status     Status			`json:"status"`
+	Status Status `json:"status"`
 
 	// Priority determines the order of job processing, higher priority jobs are processed first
-	Priority   int				`json:"priority"`
+	Priority int `json:"priority"`
 
 	// Delay is the duration to wait before the job becomes eligible for processing
-	Delay      time.Duration	`json:"delay"`
+	Delay time.Duration `json:"delay"`
 
 	// MaxRetries is the maximum number of retry attempts for the job in case of failure
-	MaxRetries int				`json:"max_retries"`
+	MaxRetries int `json:"max_retries"`
 
 	// RetryCount is the number of times the job has been retried after failure
-	RetryCount int				`json:"retry_count"`
+	RetryCount int `json:"retry_count"`
 
 	// Error contains the error message if the job has failed, empty otherwise
-	Error      string			`json:"error,omitempty"`
+	Error string `json:"error,omitempty"`
 
 	// CreatedAt is the timestamp when the job was created
-	CreatedAt  time.Time		`json:"created_at"`
+	CreatedAt time.Time `json:"created_at"`
 
 	// UpdatedAt is the timestamp when the job was last updated, such as status change or retry attempt
-	UpdatedAt  time.Time		`json:"updated_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 
 	// RunAfter is the timestamp after which the job becomes eligible for processing, calculated as CreatedAt + Delay
-	RunAfter   time.Time		`json:"run_after"`
+	RunAfter time.Time `json:"run_after"`
 }
 
 func wrapJob(job *internalJob.Job) *Job {
@@ -71,17 +89,17 @@ func wrapJob(job *internalJob.Job) *Job {
 	}
 
 	return &Job{
-		ID: job.ID,
-		Type: job.Type,
-		Payload: job.Payload,
-		Status: Status(job.Status),
-		Priority: job.Priority,
-		Delay: job.Delay,
+		ID:         job.ID,
+		Type:       job.Type,
+		Payload:    job.Payload,
+		Status:     Status(job.Status),
+		Priority:   job.Priority,
+		Delay:      job.Delay,
 		MaxRetries: job.MaxRetries,
 		RetryCount: job.RetryCount,
-		Error: job.Error,
-		CreatedAt: job.CreatedAt,
-		UpdatedAt: job.UpdatedAt,
-		RunAfter: job.RunAfter,
+		Error:      job.Error,
+		CreatedAt:  job.CreatedAt,
+		UpdatedAt:  job.UpdatedAt,
+		RunAfter:   job.RunAfter,
 	}
 }
