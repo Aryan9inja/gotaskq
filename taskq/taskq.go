@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +33,12 @@ type Server struct {
 	handlers        *internalHandler.Registry
 	redisClient     redis.UniversalClient
 	ownsRedisClient bool
+
+	jobStore     internalJob.Store
+	queueManager *queue.QueueManager
+	idGenerator  *snowflake.Snowflake
+	dlqStore     dlq.DlqInterface
+	queueFactory queue.Factory
 
 	mu            sync.Mutex
 	workerStarted bool
@@ -93,6 +101,7 @@ func New(opts Options) (*Server, error) {
 		jobStore = internalJob.NewMemoryStore(time.Duration(opts.TTL) * time.Minute)
 		mainQueue = memoryQueue
 		queueFactory = memoryFactory
+		dlqStore = dlq.NewMemoryDlq()
 	}
 
 	queueManager := queue.NewQueueManager()
@@ -103,7 +112,10 @@ func New(opts Options) (*Server, error) {
 	registry := internalHandler.NewRegistry()
 	retryEngine := retry.NewRetryEngine(jobStore, opts.MaxRetryDelay, dlqStore)
 	workerPool := worker.NewWorkerPool(context.Background(), jobStore, registry, retryEngine, opts.NumWorkers)
-	router := newRouter(jobStore, queueManager, snowflake.New(1), dlqStore, queueFactory, workerPool)
+	workerPool.AddQueue(mainQueue)
+
+	idGenerator := snowflake.New(1)
+	router := newRouter(jobStore, queueManager, idGenerator, dlqStore, queueFactory, workerPool)
 
 	return &Server{
 		httpServer: &http.Server{
@@ -114,6 +126,11 @@ func New(opts Options) (*Server, error) {
 		handlers:        registry,
 		redisClient:     redisClient,
 		ownsRedisClient: ownsRedis,
+		jobStore:        jobStore,
+		queueManager:    queueManager,
+		idGenerator:     idGenerator,
+		dlqStore:        dlqStore,
+		queueFactory:    queueFactory,
 	}, nil
 }
 
@@ -167,15 +184,16 @@ func (s *Server) RegisterFunc(jobType string, handlerFunc func(ctx context.Conte
 	return s.Register(jobType, HandlerFunc(handlerFunc))
 }
 
-// Start starts the worker pool and blocks while the HTTP server is running
-func (s *Server) Start() error{
+// StartWorkers starts only the background worker pool
+func (s *Server) StartWorkers() error {
 	if s == nil {
 		return errors.New("taskq: server is nil")
 	}
 
 	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.stopped {
-		s.mu.Unlock()
 		return errors.New("taskq: server is stopped")
 	}
 
@@ -183,7 +201,19 @@ func (s *Server) Start() error{
 		s.workerPool.Start()
 		s.workerStarted = true
 	}
-	s.mu.Unlock()
+
+	return nil
+}
+
+// Start starts the worker pool and blocks while the HTTP server is running
+func (s *Server) Start() error {
+	if s == nil {
+		return errors.New("taskq: server is nil")
+	}
+
+	if err := s.StartWorkers(); err != nil {
+		return err
+	}
 
 	err := s.httpServer.ListenAndServe()
 	if errors.Is(err, http.ErrServerClosed) {
@@ -218,7 +248,7 @@ func (s *Server) Stop() error {
 	defer cancel()
 
 	var stopErr error
-	if err := s.httpServer.Shutdown(ctx); err != nil && !errors.Is(err,http.ErrServerClosed) {
+	if err := s.httpServer.Shutdown(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		stopErr = errors.Join(stopErr, err)
 	}
 
@@ -233,4 +263,194 @@ func (s *Server) Stop() error {
 	}
 
 	return stopErr
+}
+
+// Enqueue creates and enqueues a new job on the default queue
+func (s *Server) Enqueue(ctx context.Context, opts JobOptions) (*Job, error) {
+	if s == nil {
+		return nil, errors.New("taskq: server is nil")
+	}
+
+	q, err := s.queueManager.DefaultQueue()
+	if err != nil {
+		return nil, fmt.Errorf("taskq: failed to get default queue: %w", err)
+	}
+
+	return s.enqueueOnQueue(ctx, q, opts)
+}
+
+// EnqueueOnQueue creates and enqueues a new job on the specified queue
+func (s *Server) EnqueueOnQueue(ctx context.Context, queueName string, opts JobOptions) (*Job, error) {
+	if s == nil {
+		return nil, errors.New("taskq: server is nil")
+	}
+
+	q, err := s.queueManager.Get(queueName)
+	if err != nil {
+		return nil, fmt.Errorf("taskq: failed to get queue %s: %w", queueName, err)
+	}
+
+	return s.enqueueOnQueue(ctx, q, opts)
+}
+
+func (s *Server) enqueueOnQueue(ctx context.Context, q queue.Queue, opts JobOptions) (*Job, error) {
+	if opts.Type == "" {
+		return nil, errors.New("taskq: job type is required")
+	}
+
+	if opts.Priority < 0 || opts.Priority > 10 {
+		return nil, errors.New("taskq: priority must be between 0 and 10")
+	}
+
+	now := time.Now()
+	id := strconv.FormatInt(s.idGenerator.NextID(), 10)
+
+	internalJobObj := &internalJob.Job{
+		ID:         id,
+		Type:       opts.Type,
+		Payload:    opts.Payload,
+		Priority:   opts.Priority,
+		Status:     internalJob.StatusPending,
+		MaxRetries: opts.MaxRetries,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+		Delay:      opts.Delay,
+	}
+
+	if opts.Delay > 0 {
+		internalJobObj.RunAfter = now.Add(opts.Delay)
+	}
+
+	if err := s.jobStore.Save(ctx, internalJobObj); err != nil {
+		return nil, fmt.Errorf("taskq: failed to save job: %w", err)
+	}
+
+	if err := q.Enqueue(ctx, internalJobObj); err != nil {
+		return nil, fmt.Errorf("taskq: failed to enqueue job: %w", err)
+	}
+
+	return wrapJob(internalJobObj), nil
+}
+
+// GetJob retrieves a job by its ID
+func (s *Server) GetJob(ctx context.Context, id string) (*Job, error) {
+	if s == nil {
+		return nil, errors.New("taskq: server is nil")
+	}
+
+	internalJobObj, err := s.jobStore.Get(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("taskq: failed to get job %s: %w", id, err)
+	}
+
+	return wrapJob(internalJobObj), nil
+}
+
+// ListQueues returns a list of all registered queue names
+func (s *Server) ListQueues() []string {
+	if s == nil {
+		return nil
+	}
+	return s.queueManager.ListNames()
+}
+
+// CreateQueue creates and registers a new queue
+func (s *Server) CreateQueue(name string) error {
+	if s == nil {
+		return errors.New("taskq: server is nil")
+	}
+
+	q, err := s.queueFactory.New(name)
+	if err != nil {
+		return fmt.Errorf("taskq: failed to create queue %s: %w", name, err)
+	}
+
+	if err := s.queueManager.Register(q); err != nil {
+		return fmt.Errorf("taskq: failed to register queue %s: %w", name, err)
+	}
+
+	s.workerPool.AddQueue(q)
+
+	return nil
+}
+
+// ListDeadJobs returns a list of dead jobs
+func (s *Server) ListDeadJobs(ctx context.Context, limit int64) ([]*Job, error) {
+	if s == nil {
+		return nil, errors.New("taskq: server is nil")
+	}
+
+	if s.dlqStore == nil {
+		return nil, errors.New("taskq: dlq store is not configured")
+	}
+
+	internalJobs, err := s.dlqStore.List(ctx, limit)
+	if err != nil {
+		return nil, fmt.Errorf("taskq: failed to list dead jobs: %w", err)
+	}
+
+	jobs := make([]*Job, len(internalJobs))
+	for i, j := range internalJobs {
+		jobs[i] = wrapJob(j)
+	}
+
+	return jobs, nil
+}
+
+// ReplayDeadJob moves a job from DLQ back to the default queue
+func (s *Server) ReplayDeadJob(ctx context.Context, id string) (*Job, error) {
+	if s == nil {
+		return nil, errors.New("taskq: server is nil")
+	}
+
+	if s.dlqStore == nil {
+		return nil, errors.New("taskq: dlq store is not configured")
+	}
+
+	q, err := s.queueManager.DefaultQueue()
+	if err != nil {
+		return nil, fmt.Errorf("taskq: failed to get default queue: %w", err)
+	}
+
+	deadJob, err := s.dlqStore.Get(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("taskq: failed to get dead job %s: %w", id, err)
+	}
+
+	now := time.Now()
+	deadJob.Status = internalJob.StatusPending
+	deadJob.UpdatedAt = now
+	deadJob.Error = ""
+	deadJob.RunAfter = now
+
+	if err := s.jobStore.Save(ctx, deadJob); err != nil {
+		return nil, fmt.Errorf("taskq: failed to save replayed job: %w", err)
+	}
+
+	if err := q.Enqueue(ctx, deadJob); err != nil {
+		return nil, fmt.Errorf("taskq: failed to enqueue replayed job: %w", err)
+	}
+
+	if err := s.dlqStore.Delete(ctx, id); err != nil {
+		log.Printf("taskq: failed to delete job %s from DLQ after replay: %v", id, err)
+	}
+
+	return wrapJob(deadJob), nil
+}
+
+// DeleteDeadJob removes a job from the DLQ
+func (s *Server) DeleteDeadJob(ctx context.Context, id string) error {
+	if s == nil {
+		return errors.New("taskq: server is nil")
+	}
+
+	if s.dlqStore == nil {
+		return errors.New("taskq: dlq store is not configured")
+	}
+
+	if err := s.dlqStore.Delete(ctx, id); err != nil {
+		return fmt.Errorf("taskq: failed to delete dead job %s: %w", id, err)
+	}
+
+	return nil
 }
