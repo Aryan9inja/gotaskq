@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/Aryan9inja/gotaskq/internal/job"
@@ -29,6 +30,123 @@ type DlqInterface interface {
 	List(ctx context.Context, limit int64) ([]*job.Job, error)
 }
 
+type MemoryDlq struct {
+	jobs map[string]*job.Job
+	mu   sync.RWMutex
+}
+
+func NewMemoryDlq() *MemoryDlq {
+	return &MemoryDlq{
+		jobs: make(map[string]*job.Job),
+	}
+}
+
+// ==============================
+// Memory DLQ implementation
+// ==============================
+
+func (dlq *MemoryDlq) Save(ctx context.Context, j *job.Job) error {
+	if err := validateContext(ctx); err != nil {
+		return err
+	}
+
+	if j == nil {
+		return ErrJobNil
+	}
+
+	if j.ID == "" {
+		return ErrEmptyJobID
+	}
+
+	if j.Status != job.StatusDead {
+		return ErrJobNotDead
+	}
+
+	dlq.mu.Lock()
+	defer dlq.mu.Unlock()
+
+	// Store a copy of the job to avoid external mutations
+	jobCopy := *j
+	dlq.jobs[j.ID] = &jobCopy
+
+	return nil
+}
+
+func (dlq *MemoryDlq) Get(ctx context.Context, id string) (*job.Job, error) {
+	if err := validateContext(ctx); err != nil {
+		return nil, err
+	}
+
+	if id == "" {
+		return nil, ErrEmptyJobID
+	}
+
+	dlq.mu.RLock()
+	defer dlq.mu.RUnlock()
+
+	j, ok := dlq.jobs[id]
+	if !ok {
+		return nil, ErrJobNotFound
+	}
+
+	// Return a copy
+	jobCopy := *j
+	return &jobCopy, nil
+}
+
+func (dlq *MemoryDlq) Delete(ctx context.Context, id string) error {
+	if err := validateContext(ctx); err != nil {
+		return err
+	}
+
+	if id == "" {
+		return ErrEmptyJobID
+	}
+
+	dlq.mu.Lock()
+	defer dlq.mu.Unlock()
+
+	if _, ok := dlq.jobs[id]; !ok {
+		return ErrJobNotFound
+	}
+
+	delete(dlq.jobs, id)
+	return nil
+}
+
+func (dlq *MemoryDlq) List(ctx context.Context, limit int64) ([]*job.Job, error) {
+	if err := validateContext(ctx); err != nil {
+		return nil, err
+	}
+
+	if limit <= 0 {
+		return nil, ErrInvalidLimit
+	}
+
+	dlq.mu.RLock()
+	defer dlq.mu.RUnlock()
+
+	output := make([]*job.Job, 0, limit)
+	count := int64(0)
+
+	// Since maps are unordered,
+	// this won't be as consistent as Redis's ZSet (which uses time)
+	// but it fulfills the interface.
+	for _, j := range dlq.jobs {
+		if count >= limit {
+			break
+		}
+		jobCopy := *j
+		output = append(output, &jobCopy)
+		count++
+	}
+
+	return output, nil
+}
+
+// =====================
+// Redis DLQ starts here
+// =====================
 type RedisDlq struct {
 	client     redis.UniversalClient
 	dlqKey     string
@@ -75,9 +193,9 @@ func redisStringValue(v any) (string, error) {
 	}
 }
 
-// ==================
-// DLQ implementation
-// ==================
+// ========================
+// Redis DLQ implementation
+// ========================
 func (dlq *RedisDlq) Save(ctx context.Context, j *job.Job) error {
 	if err := validateContext(ctx); err != nil {
 		return err
