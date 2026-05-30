@@ -66,8 +66,7 @@ func (dlq *MemoryDlq) Save(ctx context.Context, j *job.Job) error {
 	defer dlq.mu.Unlock()
 
 	// Store a copy of the job to avoid external mutations
-	jobCopy := *j
-	dlq.jobs[j.ID] = &jobCopy
+	dlq.jobs[j.ID] = j.Copy()
 
 	return nil
 }
@@ -90,8 +89,7 @@ func (dlq *MemoryDlq) Get(ctx context.Context, id string) (*job.Job, error) {
 	}
 
 	// Return a copy
-	jobCopy := *j
-	return &jobCopy, nil
+	return j.Copy(), nil
 }
 
 func (dlq *MemoryDlq) Delete(ctx context.Context, id string) error {
@@ -136,8 +134,7 @@ func (dlq *MemoryDlq) List(ctx context.Context, limit int64) ([]*job.Job, error)
 		if count >= limit {
 			break
 		}
-		jobCopy := *j
-		output = append(output, &jobCopy)
+		output = append(output, j.Copy())
 		count++
 	}
 
