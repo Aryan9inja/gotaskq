@@ -119,7 +119,7 @@ func (store *inMemoryStore) Save(ctx context.Context, job *Job) error {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 
-	store.jobs[job.ID] = job
+	store.jobs[job.ID] = job.Copy()
 
 	return nil
 }
@@ -142,7 +142,7 @@ func (store *inMemoryStore) Get(ctx context.Context, id string) (*Job, error) {
 		return nil, ErrJobNotFound
 	}
 
-	return job, nil
+	return job.Copy(), nil
 }
 
 func (store *inMemoryStore) UpdateStatus(ctx context.Context, id string, status Status) error {
@@ -158,17 +158,20 @@ func (store *inMemoryStore) UpdateStatus(ctx context.Context, id string, status 
 	store.mu.Lock()
 	defer store.mu.Unlock()
 
-	job, exists := store.jobs[id]
+	j, exists := store.jobs[id]
 	if !exists {
 		return ErrJobNotFound
 	}
 
-	if !isValidTransition(job.Status, status) {
-		return fmt.Errorf("invalid transition: %s -> %s", string(job.Status), string(status))
+	if !isValidTransition(j.Status, status) {
+		return fmt.Errorf("invalid transition: %s -> %s", string(j.Status), string(status))
 	}
 
-	job.Status = status
-	job.UpdatedAt = time.Now()
+	// Create a copy and update it, then replace in map
+	newJob := j.Copy()
+	newJob.Status = status
+	newJob.UpdatedAt = time.Now()
+	store.jobs[id] = newJob
 
 	return nil
 }

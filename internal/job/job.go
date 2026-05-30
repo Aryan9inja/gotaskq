@@ -29,3 +29,15 @@ type Job struct {
 	UpdatedAt  time.Time		`json:"updated_at"`
 	RunAfter   time.Time		`json:"run_after"`
 }
+
+func (j *Job) Copy() *Job {
+	if j == nil {
+		return nil
+	}
+	cp := *j
+	if j.Payload != nil {
+		cp.Payload = make(json.RawMessage, len(j.Payload))
+		copy(cp.Payload, j.Payload)
+	}
+	return &cp
+}

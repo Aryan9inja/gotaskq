@@ -78,19 +78,22 @@ func (memQueue *MemoryQueue) Enqueue(ctx context.Context, job *job.Job) error {
 	memQueue.mu.Lock()
 	defer memQueue.mu.Unlock()
 
+	// Use a copy to avoid data races
+	j := job.Copy()
+
 	// Check if runAfter is not set
-	if job.RunAfter.IsZero() {
-		job.RunAfter = job.CreatedAt.Add(job.Delay)
+	if j.RunAfter.IsZero() {
+		j.RunAfter = j.CreatedAt.Add(j.Delay)
 	}
 
 	// if runAfter is before now
 	// make runAfter now
-	if job.RunAfter.Before(time.Now()) {
-		job.RunAfter = time.Now()
+	if j.RunAfter.Before(time.Now()) {
+		j.RunAfter = time.Now()
 	}
 
-	heap.Push(&memQueue.jobH, job)
-	metrics.IncJobsEnqueued(memQueue.name, job.Type)
+	heap.Push(&memQueue.jobH, j)
+	metrics.IncJobsEnqueued(memQueue.name, j.Type)
 	metrics.SetQueueDepth(memQueue.name, memQueue.jobH.Len())
 	return nil
 }
@@ -114,7 +117,7 @@ func (memQueue *MemoryQueue) Dequeue(ctx context.Context) (j *job.Job, error err
 
 	metrics.SetQueueDepth(memQueue.name, memQueue.jobH.Len())
 
-	return j, nil
+	return j.Copy(), nil
 }
 
 func (memQueue *MemoryQueue) Len() int {
