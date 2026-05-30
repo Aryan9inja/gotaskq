@@ -101,10 +101,10 @@ func main() {
 		queueFactory = redisFactory
 	} else {
 		log.Println("Using in memory backend")
-		jobStore = job.NewMemoryStore(time.Duration(cfg.CompleteJobTTL)*time.Minute)
+		jobStore = job.NewMemoryStore(time.Duration(cfg.CompleteJobTTL) * time.Minute)
 		queueFactory = queue.NewMemoryFactory()
 		mainQueue = queue.NewMemoryQueue("default")
-		dlqStore = nil
+		dlqStore = dlq.NewMemoryDlq()
 	}
 
 	// 3. Create an ID generator
