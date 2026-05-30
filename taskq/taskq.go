@@ -205,6 +205,23 @@ func (s *Server) StartWorkers() error {
 	return nil
 }
 
+// StopWorkers stop only the background worker pool without shutting down the HTTP server
+func (s *Server) StopWorkers() error {
+	if s == nil {
+		return errors.New("taskq: server is nil")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.workerStarted {
+		s.workerPool.Stop()
+		s.workerStarted = false
+	}
+
+	return nil
+}
+
 // Start starts the worker pool and blocks while the HTTP server is running
 func (s *Server) Start() error {
 	if s == nil {
