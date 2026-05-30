@@ -27,14 +27,14 @@ func evalDequeueLua(t *testing.T, client redis.UniversalClient, ctx context.Cont
 	parts, ok := res.([]any)
 	if !ok || len(parts) == 0 {
 		t.Fatalf("Unexpected Lua script result: %v", res)
-	}	
+	}
 
 	code, err := redisInterfaceToInt64(parts[0])
 	if err != nil {
 		t.Fatalf("Invalid status code type: %v", err)
 	}
 
-	if code !=2{
+	if code != 2 {
 		return code, ""
 	}
 
@@ -50,7 +50,7 @@ func addJobToQueue(t *testing.T, ctx context.Context, client redis.UniversalClie
 	t.Helper()
 
 	member := q.memberForJob(j)
-	if withPayload{
+	if withPayload {
 		payload, err := json.Marshal(j)
 		if err != nil {
 			t.Fatalf("Failed to marshal job payload: %v", err)
@@ -102,7 +102,7 @@ func TestDequeueReadyLua(t *testing.T) {
 		testutils.ClearRedis(t, client)
 
 		q, err := NewRedisQueue("test-queue", client)
-		if err!=nil{
+		if err != nil {
 			t.Fatalf("Failed to create RedisQueue: %v", err)
 		}
 
@@ -158,7 +158,7 @@ func TestDequeueReadyLua(t *testing.T) {
 		assertQueueState(t, ctx, client, q, 0, 0)
 	})
 
-	t.Run("Missing payload entries are skipped",func(t *testing.T) {
+	t.Run("Missing payload entries are skipped", func(t *testing.T) {
 		testutils.ClearRedis(t, client)
 
 		q, _ := NewRedisQueue("test-queue", client)

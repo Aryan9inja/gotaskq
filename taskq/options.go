@@ -69,7 +69,7 @@ func normalizeOptions(opts Options) Options {
 		opts.TTL = 10
 	}
 
-	if opts.DefaultQueueName == ""{
+	if opts.DefaultQueueName == "" {
 		opts.DefaultQueueName = "default"
 	}
 

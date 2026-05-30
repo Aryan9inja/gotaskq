@@ -3,6 +3,7 @@ package queue
 import (
 	"testing"
 )
+
 func TestQueueManager(t *testing.T) {
 	manager := NewQueueManager()
 	t.Run("Register and Get Queue", func(t *testing.T) {
@@ -29,7 +30,7 @@ func TestQueueManager(t *testing.T) {
 		if err := manager.Register(NewMemoryQueue("")); err != ErrEmptyQueueName {
 			t.Fatalf("Expected ErrEmptyQueueName, got: %v", err)
 		}
-		
+
 		queue := NewMemoryQueue("q1")
 		manager.Register(queue)
 		if err := manager.Register(queue); err != ErrQueueAlreadyExists {
@@ -39,7 +40,7 @@ func TestQueueManager(t *testing.T) {
 
 	t.Run("Default Queue", func(t *testing.T) {
 		localManager := NewQueueManager()
-		if _, err:=localManager.DefaultQueue(); err != ErrDefaultQueueNotSet {
+		if _, err := localManager.DefaultQueue(); err != ErrDefaultQueueNotSet {
 			t.Fatalf("Expected ErrDefaultQueueNotSet, got : %v", err)
 		}
 

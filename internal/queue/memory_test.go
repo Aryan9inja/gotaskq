@@ -9,9 +9,9 @@ import (
 	testutils "github.com/Aryan9inja/gotaskq/internal/testUtils"
 )
 
-func TestMemoryQueue(t *testing.T){
+func TestMemoryQueue(t *testing.T) {
 	ctx := context.Background()
-	
+
 	t.Run("Enqueue and Dequeue Ordering", func(t *testing.T) {
 		q := queue.NewMemoryQueue("test-queue")
 		// Higher priority, but later run time

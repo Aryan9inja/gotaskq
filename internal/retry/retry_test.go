@@ -221,7 +221,7 @@ func TestHandleFailure(t *testing.T) {
 		if j.Status != job.StatusDead {
 			t.Errorf("Expected status dead, got %s", j.Status)
 		}
-		if j.Error != "Max retries exceeded"{
+		if j.Error != "Max retries exceeded" {
 			t.Errorf("Expecetd error 'Max retries exceeded', got %q", j.Error)
 		}
 	})
@@ -230,11 +230,11 @@ func TestHandleFailure(t *testing.T) {
 		cancelCtx, cancel := context.WithCancel(ctx)
 		cancel()
 
-		j := &job.Job{ID :"job-3"}
+		j := &job.Job{ID: "job-3"}
 		engine := NewRetryEngine(nil, 10*time.Minute, nil)
 		engine.HandleFailure(cancelCtx, nil, j)
 
-		if j.Error != "Context not found during handle failure"{
+		if j.Error != "Context not found during handle failure" {
 			t.Errorf("Expected context error, got %q", j.Error)
 		}
 	})

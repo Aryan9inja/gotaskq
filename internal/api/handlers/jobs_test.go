@@ -89,7 +89,7 @@ func TestCreateJobOnQueue(t *testing.T) {
 	q := queue.NewMemoryQueue("custom")
 	qm.Register(q)
 	idGen := snowflake.New(5)
-	
+
 	h := New(st, qm, idGen, nil, nil, nil)
 
 	t.Run("Success", func(t *testing.T) {
@@ -132,21 +132,21 @@ func TestCreateJobOnQueue(t *testing.T) {
 	})
 }
 
-func TestGetJob(t *testing.T){
-	st:= job.NewMemoryStore()
+func TestGetJob(t *testing.T) {
+	st := job.NewMemoryStore()
 	h := New(st, nil, nil, nil, nil, nil)
 
 	t.Run("Success", func(t *testing.T) {
 		j := &job.Job{
-			ID: "123",
-			Type: "email",
+			ID:       "123",
+			Type:     "email",
 			Priority: 5,
 		}
 		st.Save(context.Background(), j)
-		
+
 		req := testutils.RequestWithRouteParam(http.MethodGet, "/jobs/123", "id", "123", nil)
 		rr := httptest.NewRecorder()
-		
+
 		h.GetJob(rr, req)
 
 		if rr.Code != http.StatusOK {

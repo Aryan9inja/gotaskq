@@ -14,7 +14,7 @@ func TestStatusUpdate(t *testing.T) {
 	defer client.Close()
 
 	ctx := context.Background()
-    ttl := 1*time.Hour
+	ttl := 1 * time.Hour
 
 	t.Run("State Transitions", func(t *testing.T) {
 		testutils.ClearRedis(t, client)
@@ -91,7 +91,7 @@ func TestStatusUpdate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewRedisStore failed: %v", err)
 		}
-		
+
 		j2 := testutils.NewTestJob("j2", 5, 0)
 		if err := st.Save(ctx, j2); err != nil {
 			t.Fatalf("Save failed: %v", err)

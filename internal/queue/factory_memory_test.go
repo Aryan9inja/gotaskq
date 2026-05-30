@@ -22,7 +22,7 @@ func TestMemoryFactory(t *testing.T) {
 
 	t.Run("Empty Name", func(t *testing.T) {
 		_, err := factory.New(" ")
-		if err!=ErrEmptyQueueName{
+		if err != ErrEmptyQueueName {
 			t.Errorf("Expected ErrEmptyQueueName, got %v", err)
 		}
 	})

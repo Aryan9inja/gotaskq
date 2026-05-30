@@ -112,8 +112,8 @@ func (mq *ManualQueue) Enqueue(ctx context.Context, job *job.Job) error {
 	mq.jobs <- job
 	return nil
 }
-func (mq *ManualQueue) Dequeue(ctx context.Context) (job *job.Job, error error){
-	select{
+func (mq *ManualQueue) Dequeue(ctx context.Context) (job *job.Job, error error) {
+	select {
 	case j := <-mq.jobs:
 		return j, nil
 	default:
@@ -123,7 +123,7 @@ func (mq *ManualQueue) Dequeue(ctx context.Context) (job *job.Job, error error){
 func (mq *ManualQueue) Len() int {
 	return len(mq.jobs)
 }
-func (mq *ManualQueue) Name() string{
+func (mq *ManualQueue) Name() string {
 	return mq.name
 }
 
@@ -156,7 +156,7 @@ func TestWorkerPoolProcessing(t *testing.T) {
 		}
 
 		mockRegistry := &MockRegistry{
-			handlers: map[string]handler.Handler{"test":mockHandler},
+			handlers: map[string]handler.Handler{"test": mockHandler},
 		}
 
 		pool := NewWorkerPool(ctx, mockStore, mockRegistry, &MockRetryEngine{}, 1)
@@ -173,18 +173,22 @@ func TestWorkerPoolProcessing(t *testing.T) {
 
 		wg.Wait()
 
-		if !deleted{
+		if !deleted {
 			t.Error("Job was not deleted after successfull processing")
 		}
 
 		// Expecting transition from running to done
 		foundRunning := false
 		foundDone := false
-		for _, s := range statusChange{
-			if s == job.StatusRunning {foundRunning = true}
-			if s == job.StatusDone {foundDone = true}
+		for _, s := range statusChange {
+			if s == job.StatusRunning {
+				foundRunning = true
+			}
+			if s == job.StatusDone {
+				foundDone = true
+			}
 		}
-		if !foundRunning || !foundDone{
+		if !foundRunning || !foundDone {
 			t.Errorf("Missing status transition. Got %v", statusChange)
 		}
 	})
@@ -214,7 +218,7 @@ func TestWorkerPoolProcessing(t *testing.T) {
 		}
 
 		mockRegistry := &MockRegistry{
-			handlers: map[string]handler.Handler{"test":mockHandler},
+			handlers: map[string]handler.Handler{"test": mockHandler},
 		}
 
 		pool := NewWorkerPool(ctx, mockStore, mockRegistry, retry, 1)
@@ -231,7 +235,7 @@ func TestWorkerPoolProcessing(t *testing.T) {
 
 		wg.Wait()
 
-		if !retryCalled{
+		if !retryCalled {
 			t.Error("Retry engine was not called after handler failure")
 		}
 	})
@@ -261,7 +265,7 @@ func TestWorkerPoolProcessing(t *testing.T) {
 		}
 
 		mockRegistry := &MockRegistry{
-			handlers: map[string]handler.Handler{"test":mockHandler},
+			handlers: map[string]handler.Handler{"test": mockHandler},
 		}
 
 		pool := NewWorkerPool(ctx, mockStore, mockRegistry, retry, 1)
@@ -278,7 +282,7 @@ func TestWorkerPoolProcessing(t *testing.T) {
 
 		wg.Wait()
 
-		if !retryCalled{
+		if !retryCalled {
 			t.Error("Retry engine was not called after handler panic")
 		}
 	})
@@ -294,22 +298,22 @@ func TestRoundRobinPolling(t *testing.T) {
 	}
 
 	qSnap1 := pool.queueSnapshot()
-	if qSnap1[0].Name() != "q1"{
+	if qSnap1[0].Name() != "q1" {
 		t.Errorf("Expected first queue q1, got %q", qSnap1[0].Name())
 	}
 
 	qSnap2 := pool.queueSnapshot()
-	if qSnap2[0].Name() != "q2"{
+	if qSnap2[0].Name() != "q2" {
 		t.Errorf("Expected first queue q2, got %q", qSnap2[0].Name())
 	}
 
 	qSnap3 := pool.queueSnapshot()
-	if qSnap3[0].Name() != "q3"{
+	if qSnap3[0].Name() != "q3" {
 		t.Errorf("Expected first queue q3, got %q", qSnap3[0].Name())
 	}
 
 	qSnap4 := pool.queueSnapshot()
-	if qSnap4[0].Name() != "q1"{
+	if qSnap4[0].Name() != "q1" {
 		t.Errorf("Expected wrap around to q1, got %q", qSnap4[0].Name())
 	}
 }

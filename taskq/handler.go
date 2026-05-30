@@ -7,7 +7,7 @@ import (
 )
 
 // Handler processes jobs of registered type
-type Handler interface{
+type Handler interface {
 	// Handle runs the job and returns an error when the job should be retried or failed
 	Handle(ctx context.Context, job *Job) error
 }
@@ -16,14 +16,14 @@ type Handler interface{
 type HandlerFunc func(ctx context.Context, job *Job) error
 
 // Handle runs f(ctx, job)
-func (f HandlerFunc) Handle(ctx context.Context, job *Job) error{
+func (f HandlerFunc) Handle(ctx context.Context, job *Job) error {
 	return f(ctx, job)
 }
 
-type handlerAdapter struct{
+type handlerAdapter struct {
 	handler Handler
 }
 
-func(a handlerAdapter) Handle(ctx context.Context, job *internaljob.Job) error{
+func (a handlerAdapter) Handle(ctx context.Context, job *internaljob.Job) error {
 	return a.handler.Handle(ctx, wrapJob(job))
 }

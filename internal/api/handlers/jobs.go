@@ -77,7 +77,7 @@ func (h *Handler) CreateJob(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusCreated, job)
 }
 
-func (h *Handler) CreateJobOnQueue(w http.ResponseWriter, r *http.Request){
+func (h *Handler) CreateJobOnQueue(w http.ResponseWriter, r *http.Request) {
 	var req CreateJobRequest
 
 	queueName := chi.URLParam(r, "queue")

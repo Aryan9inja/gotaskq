@@ -86,11 +86,11 @@ func TestRedisQueue(t *testing.T) {
 	t.Run("Delay and RunAfter", func(t *testing.T) {
 		testutils.ClearRedis(t, client)
 		queue, _ := queue.NewRedisQueue("test-queue", client)
-		
+
 		j1 := testutils.NewTestJob("j1", 5, 200*time.Millisecond)
 		queue.Enqueue(ctx, j1)
 
-		_,err := queue.Dequeue(ctx)
+		_, err := queue.Dequeue(ctx)
 		if err == nil || err.Error() != "no jobs ready" {
 			t.Errorf("Expected 'no jobs ready' error, got %v", err)
 		}

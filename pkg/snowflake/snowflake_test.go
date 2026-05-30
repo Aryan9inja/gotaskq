@@ -133,10 +133,10 @@ func TestClockDrift(t *testing.T) {
 		s.lastStamp = now + 10
 
 		start := time.Now()
-		id:=s.NextID()
+		id := s.NextID()
 		elapsed := time.Since(start)
 
-		if elapsed < 10*time.Millisecond{
+		if elapsed < 10*time.Millisecond {
 			t.Logf("Warning: Large clock drift waiting was short (%v), might be due to fast execution or scheduling", elapsed)
 		}
 

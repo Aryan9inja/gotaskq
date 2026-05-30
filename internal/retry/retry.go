@@ -37,7 +37,7 @@ func ShouldRetry(j *job.Job) bool {
 func (engine *RetryEngine) NextDelay(j *job.Job) time.Duration {
 	// Exponential backoff delay
 	// delay = BaseDelay * 2^RetryCount + random_jitter
-	delay := min(j.Delay * (1 << j.RetryCount), engine.MaxDelay)
+	delay := min(j.Delay*(1<<j.RetryCount), engine.MaxDelay)
 
 	jitter := time.Duration(rand.Float64() * 0.4 * float64(delay))
 

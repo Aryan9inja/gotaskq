@@ -23,13 +23,13 @@ func (h *MockHandler) Handle(ctx context.Context, job *job.Job) error {
 func TestRegistry(t *testing.T) {
 	reg := NewRegistry()
 
-	t.Run("Concurrency", func (t *testing.T) {
+	t.Run("Concurrency", func(t *testing.T) {
 		var wg sync.WaitGroup
 		numGoroutines := 100
 
 		for i := 0; i < numGoroutines; i++ {
 			wg.Add(1)
-			go func (i int)  {
+			go func(i int) {
 				defer wg.Done()
 				jobType := "type" + string(rune(i))
 				reg.Register(jobType, &MockHandler{})

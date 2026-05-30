@@ -6,11 +6,11 @@ import (
 )
 
 type Config struct {
-	Port       string
-	MaxDelay   int
-	NumWorkers int
-	UseRedis   bool
-	RedisUrl   string
+	Port           string
+	MaxDelay       int
+	NumWorkers     int
+	UseRedis       bool
+	RedisUrl       string
 	CompleteJobTTL int
 }
 
@@ -34,10 +34,10 @@ func LoadConfig() *Config {
 			return "8000"
 		}(),
 
-		MaxDelay:   envToInt(os.Getenv("MAX_DELAY"), 5000),
-		NumWorkers: envToInt(os.Getenv("NUM_WORKERS"), 10),
-		UseRedis: os.Getenv("USE_REDIS") == "true",
-		RedisUrl: os.Getenv("REDIS_URL"),
-		CompleteJobTTL: envToInt(os.Getenv("COMPLETE_JOB_TTL"),5), // minutes will be converted in main
+		MaxDelay:       envToInt(os.Getenv("MAX_DELAY"), 5000),
+		NumWorkers:     envToInt(os.Getenv("NUM_WORKERS"), 10),
+		UseRedis:       os.Getenv("USE_REDIS") == "true",
+		RedisUrl:       os.Getenv("REDIS_URL"),
+		CompleteJobTTL: envToInt(os.Getenv("COMPLETE_JOB_TTL"), 5), // minutes will be converted in main
 	}
 }

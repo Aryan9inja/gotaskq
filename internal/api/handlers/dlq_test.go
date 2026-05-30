@@ -14,7 +14,7 @@ import (
 	"github.com/Aryan9inja/gotaskq/pkg/snowflake"
 )
 
-func TestListDeadJobs(t *testing.T){
+func TestListDeadJobs(t *testing.T) {
 	client := testutils.GetRedisClient(t)
 	t.Run("Success", func(t *testing.T) {
 		dlqStore, err := dlq.NewRedisDlq(client)
@@ -23,7 +23,7 @@ func TestListDeadJobs(t *testing.T){
 		}
 
 		h := New(nil, nil, nil, dlqStore, nil, nil)
-		req:= httptest.NewRequest(http.MethodGet, "/dlq", nil)
+		req := httptest.NewRequest(http.MethodGet, "/dlq", nil)
 		rr := httptest.NewRecorder()
 
 		h.ListDeadJobs(rr, req)
@@ -35,7 +35,7 @@ func TestListDeadJobs(t *testing.T){
 
 	t.Run("DLQ store not configured", func(t *testing.T) {
 		h := New(nil, nil, nil, nil, nil, nil)
-		req:= httptest.NewRequest(http.MethodGet, "/dlq", nil)
+		req := httptest.NewRequest(http.MethodGet, "/dlq", nil)
 		rr := httptest.NewRecorder()
 
 		h.ListDeadJobs(rr, req)
@@ -56,7 +56,7 @@ func TestReplayDeadJob(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create DLQ store: %v", err)
 	}
-	idGen:= snowflake.New(5)
+	idGen := snowflake.New(5)
 
 	h := New(st, qm, idGen, dlqStore, nil, nil)
 
@@ -95,7 +95,7 @@ func TestDeleteDeadJob(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
 		deadJob := testutils.NewTestJob("123", 5, 0)
 		deadJob.Status = job.StatusDead
-		
+
 		dlqStore, err := dlq.NewRedisDlq(client)
 		if err != nil {
 			t.Fatalf("failed to create DLQ store: %v", err)

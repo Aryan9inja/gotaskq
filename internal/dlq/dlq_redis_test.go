@@ -58,7 +58,7 @@ func TestRedisDlq(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create RedisDlq: %v", err)
 		}
-		
+
 		j1 := testutils.NewTestJob("j1", 5, 0)
 		j1.Status = job.StatusDead
 		if err := d.Save(ctx, j1); err != nil {

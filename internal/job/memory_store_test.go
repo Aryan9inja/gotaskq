@@ -7,14 +7,14 @@ import (
 	"time"
 )
 
-func TestMemoryStore(t* testing.T){
+func TestMemoryStore(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("Save and Get", func(t *testing.T) {
 		store := NewMemoryStore()
 		j := &Job{ID: "j1", Type: "test", Status: StatusPending}
 
-		if err := store.Save(ctx, j); err!=nil{
+		if err := store.Save(ctx, j); err != nil {
 			t.Fatalf("Save failed: %v", err)
 		}
 
@@ -23,8 +23,8 @@ func TestMemoryStore(t* testing.T){
 			t.Fatalf("Get failed: %v", err)
 		}
 
-		if got.ID != j.ID{
-			t.Fatalf("Expected ID: %s, got %s",j.ID, got.ID)
+		if got.ID != j.ID {
+			t.Fatalf("Expected ID: %s, got %s", j.ID, got.ID)
 		}
 	})
 
@@ -33,12 +33,12 @@ func TestMemoryStore(t* testing.T){
 		j := &Job{ID: "j2", Type: "test", Status: StatusPending}
 		store.Save(ctx, j)
 
-		if err := store.UpdateStatus(ctx, "j2", StatusRunning); err!=nil{
+		if err := store.UpdateStatus(ctx, "j2", StatusRunning); err != nil {
 			t.Fatalf("Update status failed: %v", err)
 		}
 
 		got, _ := store.Get(ctx, j.ID)
-		if got.Status != StatusRunning{
+		if got.Status != StatusRunning {
 			t.Fatalf("Expected status %s, got %s", StatusRunning, got.Status)
 		}
 	})
